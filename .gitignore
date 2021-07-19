@@ -1,3 +1,7 @@
+*
+!*.*
+!Makefile
+
 # Prerequisites
 *.d
 
@@ -50,3 +54,25 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# app settings
+.private
+bin
+log
+!src
+!src/*
+!utils
+!utils/*
+!LICENSE
+!tests
+!tests/*.*
+!include
+!include/*
+!conf
+!conf/*.json
+*.log
+*.bak
+
+
+
+

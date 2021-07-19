@@ -1,0 +1,10 @@
+{
+	"trading_agencies": [
+		{ 
+			"exchange_name": "coincheck", 
+			"base_url": "https://coincheck.com",
+			"version": "",
+			"credentials_file": ".private/credentials-coincheck.json" // <== replace with your credentials_file
+		}
+	]
+}
