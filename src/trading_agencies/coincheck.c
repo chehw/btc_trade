@@ -324,7 +324,6 @@ int coincheck_public_get_ticker(trading_agency_t * agent, json_object ** p_jresp
 	rc = http_get(NULL, url, ctx);
 	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
 		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-		rc = 0;
 	}
 	json_response_context_cleanup(ctx);
 	return rc;
@@ -378,7 +377,6 @@ int coincheck_public_get_trades(trading_agency_t * agent, const char * pair, con
 	rc = http_get(NULL, url, ctx);
 	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
 		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-		rc = 0;
 	}
 	json_response_context_cleanup(ctx);
 	
@@ -456,7 +454,6 @@ int coincheck_public_calc_rate(trading_agency_t * agent, const char * pair, cons
 	rc = http_get(NULL, url, ctx);
 	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
 		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-		rc = 0;
 	}
 	json_response_context_cleanup(ctx);
 	return rc;
@@ -488,7 +485,6 @@ int coincheck_public_get_buy_rate(trading_agency_t * agent, const char * pair, j
 	rc = http_get(NULL, url, ctx);
 	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
 		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-		rc = 0;
 	}
 	json_response_context_cleanup(ctx);
 	

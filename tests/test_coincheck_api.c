@@ -104,7 +104,7 @@ void run_test(const char * conf_file, json_object * japi_doc)
 	
 	assert(0 == rc);
 	
-	test_public_apis(coincheck, japi_doc);
+	if(0) test_public_apis(coincheck, japi_doc);
 	test_private_apis(coincheck, japi_doc);
 	
 	trading_agency_free(coincheck);
@@ -182,7 +182,6 @@ static void test_public_apis(trading_agency_t * agent, json_object * japi_doc)
 	}
 	
 	usleep(100 * 1000);
-	exit(0);
 	return;
 }
 
@@ -217,7 +216,7 @@ static void test_private_apis(trading_agency_t * agent, json_object * japi_doc)
 	
 	// 1. new order
 	if(0) {
-		rc = coincheck_new_order(agent, "btc_jpy", "buy", 3333000.0, 0.01, &jresponse);
+		rc = coincheck_new_order(agent, "btc_jpy", "buy", 3260000.0, 0.01, &jresponse);
 		//~ rc = coincheck_new_order(agent, "btc_jpy", "buy", 3533000.0, 0.01, &jresponse);
 		assert(0 == rc);
 		if(jresponse) {

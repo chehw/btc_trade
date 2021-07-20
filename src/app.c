@@ -37,6 +37,9 @@
 #include "shell.h"
 #include "trading_agency.h"
 
+#include "gui/coincheck-gui.h"
+#include "utils.h"
+
 
 int main(int argc, char **argv)
 {
@@ -131,26 +134,66 @@ static int app_private_parse_args(app_private_t * priv, int argc, char ** argv)
 	if(conf_file) {
 		priv->conf_file = conf_file;
 	}
-	
+
 	return 0;
 }
 
 
 static int app_load_config(struct app_context * app, const char * conf_file)
 {
-	return 0;
+	assert(app && app->priv);
+	app_private_t * priv = app->priv;
+	int rc = 0;
+	json_object * jconfig = json_object_from_file(conf_file);
+	assert(jconfig);
+	
+	priv->jconfig = jconfig;
+	json_object * jtrading_agencies = NULL;
+	json_bool ok = json_object_object_get_ex(jconfig, "trading_agencies", &jtrading_agencies);
+	assert(ok && jtrading_agencies);
+	
+	int num_agencies = json_object_array_length(jtrading_agencies);
+	assert(num_agencies > 0);
+	
+	trading_agency_t ** agencies = calloc(num_agencies, sizeof(*agencies));
+	assert(agencies);
+	
+	for(int i = 0; i < num_agencies; ++i) {
+		json_object * jagency_config = json_object_array_get_idx(jtrading_agencies, i);
+		const char * exchange_name = json_get_value(jagency_config, string, exchange_name);
+		assert(exchange_name);
+		
+		trading_agency_t * agent = trading_agency_new(exchange_name, app);
+		assert(agent);
+		rc = agent->load_config(agent, jagency_config);
+		assert(0 == rc);
+		agencies[i] = agent;
+	}
+	priv->num_agencies = num_agencies;
+	priv->agencies = agencies;
+	
+	return rc;
 }
+
 static int app_init(struct app_context * app)
 {
 	assert(app && app->priv);
 	app_private_t * priv = app->priv;
+	int rc = 0;
+	if(NULL == priv->conf_file) priv->conf_file = "conf/config.json";
+	rc = app_load_config(app, priv->conf_file);
 	
+	assert(0 == rc);
 	shell_context_t * shell = shell_context_init(NULL, app->argc, app->argv, app);
 	assert(shell);
 	priv->shell = shell;
 	
 	shell->init(shell);
 	
+	trading_agency_t * coincheck_agency = app_context_get_trading_agency(app, "coincheck");
+	assert(coincheck_agency);
+	
+	coincheck_panel_init(coincheck_agency, shell);
 	return 0;
 	
 }
@@ -238,7 +281,15 @@ shell_context_t * app_context_get_shell(struct app_context * app)
 trading_agency_t * app_context_get_trading_agency(struct app_context * app, const char * agency_name)
 {
 	assert(app && app->priv);
-	if(NULL == app || NULL == app->priv) return NULL;
+	if(NULL == agency_name) return NULL;
+	
+	app_private_t * priv = app->priv;
+	
+	for(int i = 0; i < priv->num_agencies; ++i) {
+		trading_agency_t * agent = priv->agencies[i];
+		assert(agent);
+		if(strcasecmp(agency_name, agent->exchange_name) == 0) return agent;
+	}
 	
 	return NULL;
 }

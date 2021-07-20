@@ -36,6 +36,8 @@
 #include <gtk/gtk.h>
 #include <json-c/json.h>
 
+#include "gui/coincheck-gui.h"
+
 static int shell_load_config(struct shell_context * shell, json_object * jconfig);
 static int shell_init(struct shell_context * shell);
 static int shell_run(struct shell_context * shell);
@@ -55,7 +57,7 @@ typedef struct shell_private
 	GtkWidget * header_bar;
 	
 	GtkWidget * left_panel;
-	GtkWidget * main_panel;
+	panel_view_t * main_panel;
 	
 	
 }shell_private_t;
@@ -124,6 +126,16 @@ static int shell_init(struct shell_context * shell)
 	return 0;
 }
 
+static gboolean on_shell_timer(shell_context_t * shell)
+{
+	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+	
+	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
+	coincheck_panel_update_order_book(coincheck_panel);
+	
+	return G_SOURCE_CONTINUE;
+}
+
 static int shell_run(struct shell_context * shell)
 {
 	assert(shell && shell->priv);
@@ -133,10 +145,13 @@ static int shell_run(struct shell_context * shell)
 	
 	shell->is_running = 1;
 	
+	g_timeout_add(1000, (GSourceFunc)on_shell_timer, shell);
+	
 	GtkWidget * window = priv->window;
 	gtk_widget_show_all(window);
 	gtk_main();
 	
+	shell->is_running = 0;
 	shell->quit = 1;
 	return 0;
 }
@@ -181,56 +196,51 @@ static void init_windows(shell_private_t * priv)
 	assert(priv && priv->shell);
 	shell_context_t * shell = priv->shell;
 	
-	GtkWidget * window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	GtkWidget * vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	GtkWidget * grid = gtk_grid_new();
+	GtkBuilder * builder = gtk_builder_new();
+	GError * gerr = NULL;
+	guint res_id = gtk_builder_add_from_file(builder, "ui/app_window.ui", &gerr);
+	if(res_id == 0 || gerr) {
+		if(gerr) {
+			fprintf(stderr, "gtk_builder_add_from_file() failed: %s\n", gerr->message);
+			g_error_free(gerr);
+			gerr = NULL;
+		}
+		exit(1);
+	}
+	
+	GtkWidget * window = GTK_WIDGET(gtk_builder_get_object(builder, "app_window"));
 	GtkWidget * header_bar = gtk_header_bar_new();
 	gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header_bar), TRUE);
 	gtk_header_bar_set_title(GTK_HEADER_BAR(header_bar), "btc-trader");
-	
-	GtkWidget * hpaned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-	GtkWidget * scrolled_win = NULL;
-	GtkWidget * left_panel = NULL;
-	//~ GtkWidget * info_panel = NULL;
-	GtkWidget * main_panel = NULL;
-	
-	left_panel = gtk_tree_view_new();
-	scrolled_win = gtk_scrolled_window_new(NULL, NULL);
-	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_win), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(scrolled_win), GTK_SHADOW_ETCHED_IN);
-	gtk_container_add(GTK_CONTAINER(scrolled_win), left_panel);
-	gtk_widget_set_size_request(scrolled_win, 120, -1);
-	gtk_paned_add1(GTK_PANED(hpaned), scrolled_win);
-	
-	main_panel = gtk_tree_view_new();
-	scrolled_win = gtk_scrolled_window_new(NULL, NULL);
-	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_win), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(scrolled_win), GTK_SHADOW_ETCHED_IN);
-	gtk_container_add(GTK_CONTAINER(scrolled_win), main_panel);
-	gtk_widget_set_size_request(scrolled_win, 120, 300);
-	gtk_widget_set_hexpand(scrolled_win, TRUE);
-	gtk_widget_set_vexpand(scrolled_win, TRUE);
-	gtk_paned_add2(GTK_PANED(hpaned), scrolled_win);
-	
-	gtk_grid_attach(GTK_GRID(grid), hpaned, 0, 1, 3, 1);
-	GtkWidget * statusbar = gtk_statusbar_new();
-	gtk_widget_set_margin_top(statusbar, 1);
-	gtk_widget_set_margin_bottom(statusbar, 1);
-	gtk_box_pack_start(GTK_BOX(vbox), grid, TRUE, TRUE, 0);
-	gtk_box_pack_end(GTK_BOX(vbox), statusbar, FALSE, TRUE, 0);
-	
-	gtk_container_add(GTK_CONTAINER(window), vbox);
-	gtk_container_set_border_width(GTK_CONTAINER(window), 3);
-	
 	gtk_window_set_titlebar(GTK_WINDOW(window), header_bar);
+	
+	GtkWidget * toggle_button = gtk_switch_new();
+	gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), toggle_button);
+
 	
 	priv->window = window;
 	priv->header_bar = header_bar;
-	priv->grid = grid;
-	priv->statusbar = statusbar;
-	priv->left_panel = left_panel;
-	priv->main_panel = main_panel;
 	
+	priv->left_panel = GTK_WIDGET(gtk_builder_get_object(builder, "left_panel"));
+	
+	panel_view_t * main_panel = panel_view_init(NULL, "coincheck", shell);
+	assert(main_panel);
+	panel_view_load_from_builder(main_panel, builder);
+	
+	priv->main_panel = main_panel;
 	g_signal_connect_swapped(window, "destroy", G_CALLBACK(shell_stop), shell);
+	
 	return;
+}
+
+panel_view_t * shell_get_main_panel(shell_context_t * shell, const char * agency_name)
+{
+	assert(shell && shell->priv);
+	shell_private_t * priv = shell->priv;
+	if(agency_name == NULL) agency_name = "coincheck";
+	
+	// todo: ...
+	if(strcasecmp(agency_name, "coincheck") == 0) return priv->main_panel;
+	
+	return NULL;
 }
