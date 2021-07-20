@@ -144,22 +144,22 @@ static void print_usuage(const char * exe_name)
 		exe_name, exe_name);
 	
 	fprintf(stderr, 
-		"  - buy_btc: \n"
+		"  - btc_buy: \n"
 		"    - params_list: rate=<rate> amount=<amount> ]\n"
 		"    - description: \n"
 		"    - examples: \n"
-		"        %s buy_btc rate=3250000 amount=0.005\n"
-		"        %s buy_btc 3250000 0.005\n"
+		"        %s btc_buy rate=3250000 amount=0.005\n"
+		"        %s btc_buy 3250000 0.005\n"
 		"\n", 
 		exe_name, exe_name);
 	
 	fprintf(stderr, 
-		"  - sell_btc: \n"
+		"  - btc_sell: \n"
 		"    - params_list: rate=<rate> amount=<amount> ]\n"
 		"    - description: \n"
 		"    - examples: \n"
-		"        %s sell_btc rate=3550000 amount=0.005\n"
-		"        %s sell_btc 3550000 0.005\n"
+		"        %s btc_sell rate=3550000 amount=0.005\n"
+		"        %s btc_sell 3550000 0.005\n"
 		"\n", 
 		exe_name, exe_name);
 		
