@@ -75,6 +75,10 @@ log
 *~
 !ui
 !ui/*.ui
+!tools
+!tools/*.sh
+!tools/*.c
+!tools/*.json
 
 
 
