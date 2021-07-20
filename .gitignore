@@ -79,6 +79,9 @@ log
 !tools/*.sh
 !tools/*.c
 !tools/*.json
+!websocket
+!websocket/make.sh
+!websocket/coincheck-wss.c
 
 
 
