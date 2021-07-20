@@ -17,7 +17,7 @@ struct order_book_data
 	const char * rate;
 	const char * amount;
 	double d_amount;
-	double scales;	// range: [0, 1]
+	double scales;	// range: [0, 100]
 };
 	
 typedef struct panel_view

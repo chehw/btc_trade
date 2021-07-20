@@ -139,7 +139,7 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
 	
 	
-	
+	g_object_unref(store);
 	return 0;
 }
 
@@ -303,6 +303,8 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 	gtk_tree_view_set_model(GTK_TREE_VIEW(panel->bid_orders), GTK_TREE_MODEL(bids_store));
 	pthread_mutex_unlock(&panel->mutex);
 	
+	g_object_unref(asks_store);
+	g_object_unref(bids_store);
 	
 }
 int coincheck_panel_update_order_book(panel_view_t * panel)
