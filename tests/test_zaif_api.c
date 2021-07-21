@@ -36,7 +36,7 @@
 #include "utils.h"
 
 static void test_public_apis(trading_agency_t * agent);
-static void test_private_apis(trading_agency_t * aggent);
+static void test_private_apis(trading_agency_t * agent);
 void run_test(const char * conf_file);
 
 int main(int argc, char **argv)
@@ -97,7 +97,7 @@ void run_test(const char * conf_file)
 		assert(0 == rc);
 	}
 	
-	test_public_apis(zaif_public);
+	if(0) test_public_apis(zaif_public);
 	test_private_apis(zaif_trade);
 	
 	trading_agency_free(zaif_public);
@@ -135,7 +135,17 @@ static void test_public_apis(trading_agency_t * agent)
 	
 	return;
 }
-static void test_private_apis(trading_agency_t * aggent)
+
+static void test_private_apis(trading_agency_t * agent)
 {
+	assert(agent);
+	int rc = 0;
+	json_object * jresponse = NULL;
+	if(1) {
+		rc = zaif_trade_get_info(agent, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_get_info", jresponse);
+	}
+	
 	return;
 }

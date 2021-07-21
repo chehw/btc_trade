@@ -76,12 +76,12 @@ struct curl_slist * coincheck_auth_add_headers(
 	auto_buffer_init(message, 0);
 	
 	char * signature = NULL;
-	int64_t nounce_ms = (int64_t)timestamp->tv_sec * 1000 + (timestamp->tv_nsec / 1000000) % 1000;
-	char sz_nounce[100] = "";
-	int cb_nounce = snprintf(sz_nounce, sizeof(sz_nounce), "%lu", (unsigned long)nounce_ms);
-	assert(cb_nounce > 0);
+	int64_t nonce_ms = (int64_t)timestamp->tv_sec * 1000 + (timestamp->tv_nsec / 1000000) % 1000;
+	char sz_nonce[100] = "";
+	int cb_nonce = snprintf(sz_nonce, sizeof(sz_nonce), "%lu", (unsigned long)nonce_ms);
+	assert(cb_nonce > 0);
 	
-	auto_buffer_push(message, sz_nounce, cb_nounce);
+	auto_buffer_push(message, sz_nonce, cb_nonce);
 	auto_buffer_push(message, uri, strlen(uri));
 	if(body) {
 		if(cb_body == -1 || cb_body == 0) cb_body = strlen(body);
@@ -91,14 +91,14 @@ struct curl_slist * coincheck_auth_add_headers(
 	hmac_sha256_init(hmac, (unsigned char *)api_secret, strlen(api_secret));
 	hmac_sha256_update(hmac, (unsigned char *)message->data, message->length);
 	hmac_sha256_final(hmac, hash);
-	bin2hex(hash, 32, &signature);
+	bin2hex(hash, sizeof(hash), &signature);
 	
 	char line[1024] = "";
 	snprintf(line, sizeof(line), "ACCESS-KEY: %s", api_key);
 	headers = curl_slist_append(headers, line);
 	debug_printf("line: %s", line);
 	
-	snprintf(line, sizeof(line), "ACCESS-NONCE: %lu", (unsigned long)nounce_ms);
+	snprintf(line, sizeof(line), "ACCESS-NONCE: %lu", (unsigned long)nonce_ms);
 	headers = curl_slist_append(headers, line);
 	debug_printf("line: %s", line);
 	

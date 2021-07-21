@@ -191,7 +191,7 @@ void sha256_update(sha256_ctx_t * sha, const unsigned char * data, size_t len)
         sha->bytes += end - data;
     }
 }
-void sha256_final(sha256_ctx_t * sha, unsigned char hash[32])
+void sha256_final(sha256_ctx_t * sha, unsigned char hash[static 32])
 {
 	static const unsigned char pad[64] = {0x80};
 	unsigned char sizedesc[8];

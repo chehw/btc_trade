@@ -72,7 +72,7 @@ void hmac_sha512_update(hmac_sha512_t * hmac, const unsigned char * data, size_t
 	sha512_update(&hmac->inner, data, len);
 }
 
-void hmac_sha512_final(hmac_sha512_t * hmac, unsigned char hash[32])
+void hmac_sha512_final(hmac_sha512_t * hmac, unsigned char hash[static 64])
 {
 	unsigned char in_hash[64];
 	sha512_final(&hmac->inner, in_hash);

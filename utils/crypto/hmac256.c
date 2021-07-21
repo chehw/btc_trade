@@ -73,7 +73,7 @@ void hmac_sha256_update(hmac_sha256_t * hmac, const unsigned char * data, size_t
 	sha256_update(&hmac->inner, data, len);
 }
 
-void hmac_sha256_final(hmac_sha256_t * hmac, unsigned char hash[32])
+void hmac_sha256_final(hmac_sha256_t * hmac, unsigned char hash[static 32])
 {
 	unsigned char in_hash[32];
 	sha256_final(&hmac->inner, in_hash);

@@ -23,13 +23,14 @@ void sha256_final(sha256_ctx_t * sha, unsigned char hash[static 32]);
 
 typedef struct sha512_ctx
 {
-	uint64_t s[8];
-	unsigned char buf[128];
-	size_t bytes;
+	uint64_t s[8];			// hash states
+	unsigned char buf[128];	// unprocessed data buffer
+	size_t bytes_left;
+	size_t total_bytes;
 }sha512_ctx_t;
 
 void sha512_init(sha512_ctx_t * sha);
-void sha512_update(sha512_ctx_t * sha, const void * data, size_t len);
+void sha512_update(sha512_ctx_t * sha, const unsigned char * data, size_t len);
 void sha512_final(sha512_ctx_t * sha, unsigned char hash[static 64]);
 
 

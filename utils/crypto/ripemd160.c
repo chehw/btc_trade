@@ -267,7 +267,7 @@ void ripemd160_update(ripemd160_ctx_t * ripemd, const unsigned char * data, size
 	}
 }
 
-void ripemd160_final(ripemd160_ctx_t * ripemd, unsigned char hash[20])
+void ripemd160_final(ripemd160_ctx_t * ripemd, unsigned char hash[static 20])
 {
 	static const unsigned char pad[64] = {0x80};
     unsigned char sizedesc[8];

@@ -177,15 +177,13 @@ static int http_add_header(struct http_json_context * http, const char * key, ch
 	assert(cb_key > 0);
 	if(value && cb_value <= 0) cb_value = strlen(value);
 	
-	int cb = cb_key;
-	if(cb_value > 0) cb += 2 + cb_value;
+	int cb = cb_key + 2;	// "key" + ": "
+	if(cb_value > 0) cb += cb_value;
 	
 	assert(cb > 0);
 	char * header = calloc(1, cb + 1);
 	assert(header);
-	
-	if(NULL == value) strcpy(header, key);
-	else snprintf(header, cb + 1, "%s: %s", key, value); 
+	snprintf(header, cb + 1, "%s: %s", key, value?value:"");
 	
 	http->headers = curl_slist_append(http->headers, header);
 	free(header);

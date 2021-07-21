@@ -1,5 +1,5 @@
 #!/bin/bash
-TARGET=${1-"test_zaif_api"}
+TARGET=${1-"test_crypto"}
 
 LINKER="gcc -std=gnu99 -g -D_DEBUG -Wall -Iinclude -Iutils -Itests -D_DEFAULT_SOURCE -D_GNU_SOURCE " 
 
@@ -28,9 +28,21 @@ case "$TARGET" in
 			src/json-response.c \
 			utils/utils.c utils/auto_buffer.c \
 			utils/crypto/hmac512.c utils/crypto/sha512.c \
+			$(pkg-config --cflags --libs glib-2.0) \
+			-lm -lpthread -ljson-c -lcurl
+		;;
+	test_crypto|test_urlencode)
+		${LINKER} -o tests/test_urlencode \
+			tests/test_urlencode.c \
+			utils/utils.c utils/auto_buffer.c \
+			utils/crypto/hmac256.c utils/crypto/sha256.c \
+			utils/crypto/hmac512.c utils/crypto/sha512.c \
+			$(pkg-config --cflags --libs glib-2.0) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
 	*)
+		echo "not found"
+		exit 1
 		;;
 esac
 
