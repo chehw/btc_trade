@@ -43,6 +43,8 @@
 #include "trading_agency.h"
 #include "trading_agency_coincheck.h"
 
+#include "json-response.h"
+
 static const char * s_sz_pagination_order[coincheck_pagination_order_size] = {
 	[coincheck_pagination_order_DESC] = "desc",
 	[coincheck_pagination_order_ASC] = "asc",
@@ -119,194 +121,6 @@ struct curl_slist * coincheck_auth_add_headers(
 }
 
 /****************************************
- * json_response_context
-****************************************/
-struct json_response_context
-{
-	auto_buffer_t buf[1];
-	json_object * jresponse;
-	
-	int auto_parse;
-	int err_code;
-	long response_code;
-	
-	json_tokener * jtok;
-	enum json_tokener_error jerr;
-};
-
-static struct json_response_context * json_response_context_init(struct json_response_context * ctx, int auto_parse)
-{
-	if(NULL == ctx) ctx = malloc(sizeof(*ctx));
-	assert(ctx);
-	memset(ctx, 0, sizeof(*ctx));
-	
-	auto_buffer_init(ctx->buf, 0);
-	if((ctx->auto_parse = auto_parse)) {
-		ctx->jtok = json_tokener_new();
-		assert(ctx->jtok);
-	}
-	return ctx;
-}
-
-static void json_response_context_clear(struct json_response_context * ctx)
-{
-	if(NULL == ctx) return;
-	if(ctx->jresponse) {
-		json_object_put(ctx->jresponse);
-		ctx->jresponse = NULL;
-	}
-	json_tokener_reset(ctx->jtok);
-	ctx->jerr = 0;
-}
-
-static void json_response_context_cleanup(struct json_response_context * ctx)
-{
-	if(NULL == ctx) return;
-	auto_buffer_cleanup(ctx->buf);
-	json_response_context_clear(ctx);
-	
-	if(ctx->jtok) {
-		json_tokener_free(ctx->jtok);
-		ctx->jtok = NULL;
-	}
-	return;
-}
-
-/****************************************
- * curl callback function
-****************************************/
-static size_t on_coincheck_json_response(char * ptr, size_t size, size_t n, void * user_data)
-{
-	struct json_response_context * ctx = user_data;
-	assert(ctx);
-
-	size_t cb = size * n;
-	if(cb == 0) return 0;
-	
-	auto_buffer_push(ctx->buf, ptr, cb);
-	if(!ctx->auto_parse) return cb;
-	
-	json_tokener * jtok = ctx->jtok;
-	if(NULL == jtok) return 0;
-	
-	json_object * jobject = json_tokener_parse_ex(jtok, ptr, (int)cb);
-	ctx->jerr = json_tokener_get_error(jtok);
-	if(ctx->jerr == json_tokener_continue) return cb;
-	if(ctx->jerr != json_tokener_success) {
-		fprintf(stderr, "%s(%d)::json_token_parse failed: %s\n",
-			__FILE__, __LINE__, json_tokener_error_desc(ctx->jerr));
-		return 0;
-	}
-	ctx->jresponse = jobject;
-	return cb;
-}
-
-/****************************************
- * helpler functions
-****************************************/
-static int http_get(CURL * _curl, const char * url, struct json_response_context * ctx)
-{
-	assert(url && ctx);
-	CURL * curl = _curl;
-	if(NULL == curl) {
-		curl = curl_easy_init();
-		assert(curl);
-	}
-	
-	ctx->err_code = 0;
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_coincheck_json_response);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx);
-	
-	CURLcode ret = curl_easy_perform(curl);
-	ctx->err_code = ret;
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_perform() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	ret = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->response_code);
-	ctx->err_code = ret;
-	
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_getinfo() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	
-	curl_easy_reset(curl);
-	if(curl != _curl) curl_easy_cleanup(curl);
-	return ctx->err_code;
-}
-
-static int http_post(CURL * _curl, const char * url, const char * request_body, long cb_body, struct json_response_context * ctx)
-{
-	assert(url && ctx);
-	CURL * curl = _curl;
-	if(NULL == curl) {
-		curl = curl_easy_init();
-		assert(curl);
-	}
-	
-	ctx->err_code = 0;
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_coincheck_json_response);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx);
-	curl_easy_setopt(curl, CURLOPT_POST, 1L);
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
-	
-	CURLcode ret = curl_easy_perform(curl);
-	ctx->err_code = ret;
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_perform() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	ret = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->response_code);
-	ctx->err_code = ret;
-	
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_getinfo() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	
-	curl_easy_reset(curl);
-	if(curl != _curl) curl_easy_cleanup(curl);
-	return ctx->err_code;
-}
-
-static int http_delete(CURL * _curl, const char * url, struct json_response_context * ctx)
-{
-	assert(url && ctx);
-	CURL * curl = _curl;
-	if(NULL == curl) {
-		curl = curl_easy_init();
-		assert(curl);
-	}
-	
-	ctx->err_code = 0;
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_coincheck_json_response);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx);
-	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-	
-	CURLcode ret = curl_easy_perform(curl);
-	ctx->err_code = ret;
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_perform() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	ret = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->response_code);
-	ctx->err_code = ret;
-	
-	if(ret != CURLE_OK) {
-		fprintf(stderr, "%s(%d)::curl_easy_getinfo() failed: %s\n", __FILE__, __LINE__, curl_easy_strerror(ret));
-		return -1;
-	}
-	
-	curl_easy_reset(curl);
-	if(curl != _curl) curl_easy_cleanup(curl);
-	return ctx->err_code;
-}
-
-/****************************************
  * coincheck public APIs
 ****************************************/
 int coincheck_public_get_ticker(trading_agency_t * agent, json_object ** p_jresponse)
@@ -314,19 +128,17 @@ int coincheck_public_get_ticker(trading_agency_t * agent, json_object ** p_jresp
 	static const char * end_point = "api/ticker";
 	assert(agent);
 	
-	int rc = 0;
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 
 	char url[PATH_MAX] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point); 
 	
-	rc = http_get(NULL, url, ctx);
-	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	json_response_context_cleanup(ctx);
-	return rc;
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -342,9 +154,9 @@ int coincheck_public_get_trades(trading_agency_t * agent, const char * pair, con
 	static const char * end_point = "api/trades";
 	assert(agent && pair);
 	
-	int rc = 0;
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 
 	char url[PATH_MAX] = "";
 	char *p = url;
@@ -372,15 +184,12 @@ int coincheck_public_get_trades(trading_agency_t * agent, const char * pair, con
 			p += cb;
 		}
 	}
-	debug_printf("%s(): url=%s", __FUNCTION__, url);
 	
-	rc = http_get(NULL, url, ctx);
-	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	json_response_context_cleanup(ctx);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 /**
  * Order Book
@@ -393,20 +202,18 @@ int coincheck_public_get_order_book(trading_agency_t * agent, json_object ** p_j
 	static const char * end_point = "api/order_books";
 	assert(agent);
 	
-	int rc = 0;
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 
 	char url[PATH_MAX] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point); 
 	
-	rc = http_get(NULL, url, ctx);
-	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-		rc = 0;
-	}
-	json_response_context_cleanup(ctx);
-	return rc;
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -427,9 +234,9 @@ int coincheck_public_calc_rate(trading_agency_t * agent, const char * pair, cons
 	assert(agent);
 	assert(pair && order_type);
 	
-	int rc = 0;
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 
 	char url[PATH_MAX] = "";
 	char * p = url;
@@ -449,15 +256,12 @@ int coincheck_public_calc_rate(trading_agency_t * agent, const char * pair, cons
 		assert(cb > 0);
 		p += cb;
 	}
-	debug_printf("%s(): url=%s", __FUNCTION__, url);
 	
-	rc = http_get(NULL, url, ctx);
-	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	json_response_context_cleanup(ctx);
-	return rc;
-	return 0;
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -473,22 +277,20 @@ int coincheck_public_get_buy_rate(trading_agency_t * agent, const char * pair, j
 	static const char * end_point = "api/rate";
 	assert(agent && pair);
 	
-	int rc = 0;
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 
 	char url[PATH_MAX] = "";
 	int cb = 0;
 	cb = snprintf(url, sizeof(url), "%s/%s/%s", agent->base_url, end_point, pair); 
 	assert(cb > 0);
 	
-	rc = http_get(NULL, url, ctx);
-	if(0 == rc && ctx->response_code >= 200 && ctx->response_code < 300) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	json_response_context_cleanup(ctx);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 
@@ -510,8 +312,9 @@ int coincheck_new_order(trading_agency_t * agent, const char * pair, const char 
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_trade, &api_key, &api_secret);
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
@@ -520,27 +323,40 @@ int coincheck_new_order(trading_agency_t * agent, const char * pair, const char 
 	char * p = request_body;
 	char * p_end = p + sizeof(request_body);
 	int cb_body = 0;
-	cb_body = snprintf(p, p_end - p, "pair=%s&order_type=%s&rate=%f&amount=%f",
-		pair, order_type, rate, amount);
+	
+	if(strcasecmp(order_type, "buy") == 0 || strcasecmp(order_type, "sell") == 0) {
+		cb_body = snprintf(p, p_end - p, 
+			"pair=%s&order_type=%s&rate=%f&amount=%f",
+			pair, order_type, 
+			rate, amount
+		);
+	}else if(strcasecmp(order_type, "market_buy") == 0) {
+		cb_body = snprintf(p, p_end - p, 
+			"pair=%s&order_type=%s&market_buy_amount=%f",
+			pair, order_type, 
+			rate
+		);
+	}else if(strcasecmp(order_type, "market_sell") == 0) {
+		cb_body = snprintf(p, p_end - p, 
+			"pair=%s&order_type=%s&amount=%f",
+			pair, order_type, 
+			amount
+		);
+	}
 	assert(cb_body > 0);
 	debug_printf("post_fields: %s", request_body);
 	
-	CURL * curl = curl_easy_init();
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, 
+		request_body, cb_body, 
+		NULL);
 	
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, request_body, cb_body, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	jresponse = http->post(http, url, request_body, cb_body);
+	if(NULL == jresponse) return response->err_code;
 	
-	rc = http_post(curl, url, request_body, -1, ctx);
-	curl_slist_free_all(headers);
-	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -560,27 +376,24 @@ int coincheck_get_unsettled_order_list(trading_agency_t * agent, json_object ** 
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, 
+		NULL, 0, 
+		NULL);
 	
-	rc = http_get(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -602,27 +415,23 @@ int coincheck_cancel_order(trading_agency_t * agent, const char * order_id, json
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_trade, &api_key, &api_secret);
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s/%s", agent->base_url, end_point, order_id);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
 	
-	rc = http_delete(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->delete(http, url, NULL, 0);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -644,27 +453,23 @@ int coincheck_get_cancellation_status(trading_agency_t * agent, const char * ord
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s?id=%s", agent->base_url, end_point, order_id);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
 	
-	rc = http_get(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 /**
@@ -684,8 +489,9 @@ int coincheck_get_order_history(trading_agency_t * agent, struct coincheck_pagin
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret);	// use query_key (the principle of least privilege )
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	char * p = url;
@@ -712,28 +518,17 @@ int coincheck_get_order_history(trading_agency_t * agent, struct coincheck_pagin
 			p += cb;
 		}
 	}
-	debug_printf("%s(): url=%s", __FUNCTION__, url);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
 	
-	rc = http_get(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}else {
-		fprintf(stderr, "err_code=%d, response_code=%ld, buf=%.*s\n", 
-			ctx->err_code, ctx->response_code, 
-			(int)ctx->buf->length, 
-			(char *)ctx->buf->data);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 
 
@@ -761,27 +556,23 @@ int coincheck_account_get_balance(trading_agency_t * agent, json_object ** p_jre
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
 	
-	rc = http_get(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }
 //~ int coincheck_account_send_btc(trading_agency_t * agent, const char * address, const char * amount, json_object ** p_jresponse);
 //~ int coincheck_account_get_sending_history(trading_agency_t * agent, const char * currency, json_object ** p_jresponse);
@@ -803,25 +594,21 @@ int coincheck_account_get_info(trading_agency_t * agent, json_object ** p_jrespo
 	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
 	assert(0 == rc && api_key && api_secret);
 	
-	struct json_response_context ctx[1];
-	json_response_context_init(ctx, 1);
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
 	
 	char url[4096] = "";
 	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
 	
-	CURL * curl = curl_easy_init();
-	struct curl_slist * headers = NULL;
-	headers = coincheck_auth_add_headers(headers, api_key, api_secret, url, NULL, 0, NULL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
 	
-	rc = http_get(curl, url, ctx);
-	curl_slist_free_all(headers);
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
 	
-	if(0 == rc && ctx->jresponse) {
-		if(p_jresponse) *p_jresponse = json_object_get(ctx->jresponse);
-	}
-	
-	json_response_context_cleanup(ctx);
-	curl_easy_cleanup(curl);
-	return rc;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
 }

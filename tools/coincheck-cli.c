@@ -45,6 +45,8 @@ int cli_btc_sell(struct cli_context * ctx);
 int cli_cancel_order(struct cli_context * ctx);
 int cli_list_unsettled_orders(struct cli_context * ctx);
 int cli_get_order_history(struct cli_context * ctx);
+int cli_get_balance(struct cli_context * ctx);
+int cli_get_account(struct cli_context * ctx);
 
 typedef int (* cli_function_ptr)(struct cli_context * cli);
 typedef struct cli_mapping_record
@@ -63,6 +65,8 @@ static cli_mapping_record_t s_cli_mappings[] = {
 	FUNCTION_DEF(cancel_order, cli_cancel_order),
 	FUNCTION_DEF(list_unsettled_orders, cli_list_unsettled_orders),
 	FUNCTION_DEF(order_history, cli_get_order_history),
+	FUNCTION_DEF(balance, cli_get_balance),
+	FUNCTION_DEF(account, cli_get_account),
 	{ "", }
 };
 
@@ -189,6 +193,21 @@ static void print_usuage(const char * exe_name)
 		"\n",
 		exe_name);
 		
+	fprintf(stderr, 
+		"  - balance: (no params)\n"
+		"    - description: \n"
+		"      examples: \n"
+		"        %s balance\n"
+		"\n",
+		exe_name);
+	
+	fprintf(stderr, 
+		"  - account: (no params)\n"
+		"    - description: Get account info.\n"
+		"      examples: \n"
+		"        %s account\n"
+		"\n",
+		exe_name);
 	return;
 }
 
@@ -397,6 +416,30 @@ int cli_get_order_history(struct cli_context * ctx)
 	return output_json_response(rc, jresponse);
 }
 
+int cli_get_balance(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_account_get_balance(ctx->agent, &jresponse);
+	
+	return output_json_response(rc, jresponse);
+}
+
+
+int cli_get_account(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_account_get_info(ctx->agent, &jresponse);
+	
+	return output_json_response(rc, jresponse);
+}
+
+
 /*****************************************
  * cli context
  ****************************************/
@@ -425,6 +468,8 @@ cli_context_t * cli_context_new(int argc, char ** argv)
 		cli->num_params = argc - 2;
 		cli->params_list = &argv[2];
 	}
+	
+	json_object_put(jconfig);
 
 	return cli;
 }
@@ -432,6 +477,9 @@ void cli_context_free(cli_context_t * ctx)
 {
 	if(NULL == ctx) return;
 	if(ctx->agent) {
-		
+		trading_agency_free(ctx->agent);
+		ctx->agent = NULL;
 	}
+	
+	free(ctx);
 }

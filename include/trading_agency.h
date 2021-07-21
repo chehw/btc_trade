@@ -8,6 +8,8 @@ extern "C" {
 #include <json-c/json.h>
 #include <limits.h>
 
+#include "json-response.h"
+
 #define TRADING_AGENCY_MAX_NAME_LEN (100)
 enum trading_agency_credentials_type
 {
@@ -33,20 +35,8 @@ typedef struct trading_agency
 		enum trading_agency_credentials_type type, 
 		const char ** p_api_key, const char ** p_api_secret);
 	
-	/*****************************
-	 * virtual functions
-	*****************************/
-	// public api
-	int (* query)(struct trading_agency * agent, 
-		const char * method,  // [ "GET", "POST", ... ]
-		const char * command, json_object * jparams, 
-		json_object ** p_jresult);
-	
-	// private api
-	int (* execute)(struct trading_agency * agent, 
-		const char * method, // [ "GET", "POST", ... ]
-		const char * command, json_object * jparams, 
-		json_object ** p_jresult); 
+	// private 
+	struct http_json_context http[1];
 }trading_agency_t;
 trading_agency_t * trading_agency_new(const char * agency_name, void * user_data);
 int trading_agency_class_init(trading_agency_t * agent);

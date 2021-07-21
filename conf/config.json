@@ -5,6 +5,17 @@
 			"base_url": "https://coincheck.com",
 			"version": "",
 			"credentials_file": ".private/credentials-coincheck.json" // <== replace with your credentials_file
+		},
+		{
+			"exchange_name": "zaif::public",
+			"base_url": "https://api.zaif.jp/api/1",
+			"version": "",
+		},
+		{
+			"exchange_name": "zaif::trade",
+			"base_url": "https://api.zaif.jp/tapi",
+			"version": "api/1",
+			"credentials_file": ".private/credentials-zaif.json" // <== replace with your credentials_file
 		}
 	]
 }

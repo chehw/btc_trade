@@ -37,6 +37,8 @@
 #include <json-c/json.h>
 #include <curl/curl.h>
 
+#include "json-response.h"
+
 #define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
 void auto_unlock_mutex_ptr(void * ptr)
 {
@@ -115,9 +117,6 @@ typedef struct trading_agency_private
 	char api_withdraw_key[TRADING_AGENCY_MAX_KEY_SIZE];
 	char api_withdraw_secret[TRADING_AGENCY_MAX_KEY_SIZE];
 	
-	CURL * curl_query;
-	CURL * curl_execute;
-	
 	pthread_t th;
 	pthread_mutex_t mutex;
 	
@@ -187,9 +186,11 @@ trading_agency_t * trading_agency_new(const char * exchange_name, void * user_da
 		assert(agent);
 		if(exchange_name) strncpy(agent->exchange_name, exchange_name, sizeof(agent->exchange_name));
 		trading_agency_class_init(agent);
-		
+		agent->user_data = user_data;
 	}
-	assert(agent);
+	
+	http_json_context_init(agent->http, agent);
+
 	trading_agency_private_t * priv = trading_agency_private_new(agent);
 	assert(priv && priv == agent->priv);
 	
@@ -207,6 +208,8 @@ void trading_agency_free(trading_agency_t * agent)
 	}
 	
 	if(agent->cleanup) agent->cleanup(agent);
+	
+	http_json_context_cleanup(agent->http);
 	
 	trading_agency_private_free(agent->priv);
 	free(agent);
@@ -281,7 +284,7 @@ static int trading_agency_load_config(struct trading_agency * agent, json_object
 	}
 	
 	const char * credentials_file = json_get_value(jconfig, string, credentials_file);
-	assert(credentials_file);
+	//~ assert(credentials_file);
 	if(credentials_file) {
 		load_credentials_file(agent->priv, credentials_file);
 	}

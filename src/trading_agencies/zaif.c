@@ -33,3 +33,25 @@
 
 #include "trading_agency.h"
 #include "trading_agency_zaif.h"
+#include "json-response.h"
+
+/****************************************
+ * coincheck public APIs
+****************************************/
+int zaif_public_get_currency(trading_agency_t * agent, const char * currency, json_object ** p_jresponse)
+{
+	static const char * end_point = "currencies";
+	struct http_json_context * http = agent->http;
+	assert(http);
+	if(NULL == currency) currency = "all";
+	
+	char url[PATH_MAX] = "";
+	snprintf(url, sizeof(url), "%s/%s/%s", agent->base_url, end_point, currency);
+	
+	json_object * jresponse = http->get(http, url);
+	if(NULL == jresponse) return -1;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	
+	return 0;
+}

@@ -104,7 +104,7 @@ void run_test(const char * conf_file, json_object * japi_doc)
 	
 	assert(0 == rc);
 	
-	if(0) test_public_apis(coincheck, japi_doc);
+	test_public_apis(coincheck, japi_doc);
 	test_private_apis(coincheck, japi_doc);
 	
 	trading_agency_free(coincheck);
