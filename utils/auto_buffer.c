@@ -81,6 +81,7 @@ void auto_buffer_cleanup(auto_buffer_t * buf)
 int auto_buffer_push(auto_buffer_t * buf, const void * data, size_t length)
 {
 	assert(buf);
+	if(data && length == -1) length = strlen((char *)data);
 	if(NULL== data || length == 0) return 0;
 	
 	size_t minimal_buf_size = buf->start_pos + buf->length + length;

@@ -35,6 +35,10 @@
 #include "trading_agency_zaif.h"
 #include "utils.h"
 
+#include <time.h>
+#include <unistd.h>
+#include <stdbool.h>
+
 static void test_public_apis(trading_agency_t * agent);
 static void test_private_apis(trading_agency_t * agent);
 void run_test(const char * conf_file);
@@ -127,12 +131,12 @@ static void test_public_apis(trading_agency_t * agent)
 		dump_json_response("currency", jresponse);
 	}
 	
+	
 	if(1) { 
 		rc = zaif_public_get_currency(agent, "all", &jresponse);
 		assert(0 == rc);
 		dump_json_response("currency", jresponse);
 	}
-	
 	return;
 }
 
@@ -141,11 +145,73 @@ static void test_private_apis(trading_agency_t * agent)
 	assert(agent);
 	int rc = 0;
 	json_object * jresponse = NULL;
-	if(1) {
+	
+	int query_inteval_us = 100 * 1000;  // 100 milli-seconds
+	
+	if(0) {
 		rc = zaif_trade_get_info(agent, &jresponse);
 		assert(0 == rc);
 		dump_json_response("zaif_trade_get_info", jresponse);
 	}
+	
+	if(0) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_get_info2(agent, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_get_info2", jresponse);
+	}
+	
+
+	if(0) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_get_personal_info(agent, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_get_personal_info", jresponse);
+	}
+	
+	if(0) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_get_id_info(agent, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_get_id_info", jresponse);
+	}
+	
+	if(0) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_get_trade_history(agent, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_get_trade_history", jresponse);
+	}
+	
+	if(1) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_active_orders(agent, "btc_jpy", false, false, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_active_orders", jresponse);
+	}
+	
+	if(0) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_buy(agent, "btc_jpy", 3500000.0, 0.01, 
+			0, NULL,
+			&jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_buy", jresponse);
+		
+		rc = zaif_trade_sell(agent, "btc_jpy", 3800000.0, 0.01, 
+			0, NULL,
+			&jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_sell", jresponse);
+	}
+	
+	if(1) {
+		usleep(query_inteval_us);
+		rc = zaif_trade_cancel_order(agent, "751538975", NULL, FALSE, &jresponse);
+		assert(0 == rc);
+		dump_json_response("zaif_trade_cancel_order", jresponse);
+	}
+	
 	
 	return;
 }

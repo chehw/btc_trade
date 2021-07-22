@@ -10,8 +10,8 @@ extern "C" {
 #include <gnutls/crypto.h>
 
 #define hmac_hash(algorithm, key, key_len, msg, cb_msg, digest) gnutls_hmac_fast(algorithm, key, key_len, msg, cb_msg, digest)
-#define hmac_sha256_hash(msg, cb_msg, digest) hmac_hash(GNUTLS_MAC_SHA256, msg, cb_msg, digest)
-#define hmac_sha512_hash(msg, cb_msg, hash)   hmac_hash(GNUTLS_MAC_SHA512, msg, cb_msg, hash)
+#define hmac_sha256_hash(key, key_len, msg, cb_msg, digest) hmac_hash(GNUTLS_MAC_SHA256, key, key_len, msg, cb_msg, digest)
+#define hmac_sha512_hash(key, key_len, msg, cb_msg, digest)   hmac_hash(GNUTLS_MAC_SHA512, key, key_len, msg, cb_msg, digest)
 
 typedef struct hmac_ctx 
 {

@@ -11,7 +11,7 @@ extern "C" {
 
 #define sha_hash(algorithm, msg, cb_msg, digest) gnutls_hash_fast(algorithm, msg, cb_msg, digest)
 #define sha256_hash(msg, cb_msg, digest) sha_hash(GNUTLS_DIG_SHA256, msg, cb_msg, digest)
-#define sha512_hash(msg, cb_msg, hash)   sha_hash(GNUTLS_DIG_SHA512, msg, cb_msg, hash)
+#define sha512_hash(msg, cb_msg, hash)   sha_hash(GNUTLS_DIG_SHA512, msg, cb_msg, digest)
 
 typedef struct hash_ctx 
 {
