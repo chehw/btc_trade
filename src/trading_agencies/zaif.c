@@ -43,8 +43,6 @@
 #include "crypto/hmac.h"
 #include "utils.h"
 
-#include <glib.h>
-
 static void auto_buffer_add_fmt(auto_buffer_t * buf, const char * fmt, ...)
 {
 	auto_buffer_resize(buf, buf->length + PATH_MAX);
@@ -92,10 +90,15 @@ struct curl_slist * zaif_auth_add_headers(
 	assert(api_key && api_secret);
 	assert(post_fields);
 	
-	GHmac * hmac = g_hmac_new(G_CHECKSUM_SHA512, (unsigned char *)api_secret, strlen(api_secret));
-	assert(hmac);
-	g_hmac_update(hmac, (unsigned char *)post_fields, length);
-	const char * signature = g_hmac_get_string(hmac);
+	unsigned char hash[64] = { 0 };
+	hmac_sha512_t hmac[1];
+	hmac_sha512_init(hmac, api_secret, strlen(api_secret));
+	hmac_sha512_update(hmac, post_fields, length);
+	hmac_sha512_final(hmac, hash);
+	
+	char * signature = NULL;
+	ssize_t cb_signature = bin2hex(hash, 64, &signature);
+	assert(cb_signature == 128);
 	
 	char line[1024] = "";
 	snprintf(line, sizeof(line), "key: %s", api_key);
@@ -103,11 +106,11 @@ struct curl_slist * zaif_auth_add_headers(
 	debug_printf("line: %s", line);
 	
 	snprintf(line, sizeof(line), "sign: %s", signature);
+	
 	headers = curl_slist_append(headers, line);
 	debug_printf("line: %s", line);
 	
-	g_hmac_unref(hmac);
-	
+	free(signature);
 	return headers;
 }
 

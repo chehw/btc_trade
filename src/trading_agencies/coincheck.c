@@ -39,7 +39,6 @@
 
 #include "crypto/hmac.h"
 #include "utils.h"
-
 #include "trading_agency.h"
 #include "trading_agency_coincheck.h"
 

@@ -18,7 +18,7 @@ case "$TARGET" in
 			src/trading_agency.c src/trading_agencies/coincheck.c \
 			src/json-response.c \
 			utils/utils.c utils/auto_buffer.c \
-			utils/crypto/hmac256.c utils/crypto/sha256.c \
+			$(pkg-config --cflags --libs gnutls) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
 	test_zaif_api)
@@ -27,17 +27,14 @@ case "$TARGET" in
 			src/trading_agency.c src/trading_agencies/zaif.c \
 			src/json-response.c \
 			utils/utils.c utils/auto_buffer.c \
-			utils/crypto/hmac512.c utils/crypto/sha512.c \
-			$(pkg-config --cflags --libs glib-2.0) \
+			$(pkg-config --cflags --libs gnutls) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
 	test_crypto|test_urlencode)
 		${LINKER} -o tests/test_urlencode \
 			tests/test_urlencode.c \
 			utils/utils.c utils/auto_buffer.c \
-			utils/crypto/hmac256.c utils/crypto/sha256.c \
-			utils/crypto/hmac512.c utils/crypto/sha512.c \
-			$(pkg-config --cflags --libs glib-2.0) \
+			$(pkg-config --cflags --libs gnutls) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
 	*)

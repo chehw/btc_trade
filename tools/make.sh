@@ -6,5 +6,5 @@ gcc -std=gnu99 -D_GNU_SOURCE -D_DEFAULT_SOURCE -g -Wall \
     ../src/trading_agency.c ../src/trading_agencies/coincheck.c \
     ../src/json-response.c \
     ../utils/utils.c ../utils/auto_buffer.c \
-    ../utils/crypto/hmac256.c ../utils/crypto/sha256.c \
+    $(pkg-config --cflags --libs gnutls) \
     -lm -lpthread -ljson-c -lcurl

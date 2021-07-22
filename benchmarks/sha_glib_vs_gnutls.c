@@ -115,8 +115,8 @@ void dump_usuage(struct resource_timer * rt, const char * title, int show_detail
 	fprintf(stderr, "========== usuages: %s ===========\n", title);
 	fprintf(stderr, "time elapsed: %f ms\n", time_elapsed * 1000.0);
 	
-	fprintf(stderr, "user time: %" PRIi64 " ms" "\n", rt->usertime_current - rt->usertime_begin);
-	fprintf(stderr, "sys  time: %" PRIi64 " ms" "\n", rt->systime_current - rt->systime_begin);
+	fprintf(stderr, "user time: %" PRIi64 " ms" "\n", (rt->usertime_current - rt->usertime_begin) / 1000);
+	fprintf(stderr, "sys  time: %" PRIi64 " ms" "\n", (rt->systime_current - rt->systime_begin) / 1000);
 	
 	if(show_details) 
 	{ 
@@ -159,6 +159,8 @@ void test_glib_sha(void)
 		}
 	}
 	
+	g_checksum_free(sha);
+	
 	dump_usuage(rt, __FUNCTION__, 0);
 	dump_line("hash: ", hash, 32);
 	return;
@@ -197,7 +199,7 @@ void test_gnutls_sha(void)
 		for(int j = 0; j < BATCH_SIZE; ++j) {
 			gnutls_hash_init(&sha, GNUTLS_DIG_SHA256);
 			gnutls_hash(sha, s_message_buf, sizeof(s_message_buf));
-			gnutls_hash_output(sha, hash);
+			gnutls_hash_deinit(sha, hash);
 		}
 	}
 	

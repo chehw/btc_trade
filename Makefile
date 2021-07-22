@@ -20,8 +20,11 @@ OPTIMIZE = -O0
 endif
 
 
-CFLAGS += $(shell pkg-config --cflags glib-2.0)
-LIBS += $(shell pkg-config --libs glib-2.0)
+#~ CFLAGS += $(shell pkg-config --cflags glib-2.0)
+#~ LIBS += $(shell pkg-config --libs glib-2.0)
+
+CFLAGS += $(shell pkg-config --cflags gnutls)
+LIBS += $(shell pkg-config --libs gnutls)
 
 CFLAGS += $(shell pkg-config --cflags gtk+-3.0)
 LIBS += $(shell pkg-config --libs gtk+-3.0)
