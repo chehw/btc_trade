@@ -83,5 +83,8 @@ log
 !websocket/make.sh
 !websocket/coincheck-wss.c
 
-
+!benchmarks
+!benchmarks/*.c
+!benchmarks/*.h
+!benchmarks/*.sh
 

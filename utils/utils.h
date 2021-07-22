@@ -28,6 +28,7 @@ typedef struct app_timer
 }app_timer_t;
 double app_timer_start(app_timer_t * timer);
 double app_timer_stop(app_timer_t * timer);
+#define app_timer_get_elapsed(timer) app_timer_stop(timer)
 
 typedef char * string;
 #define json_get_value(jobj, type, key) ({								\
