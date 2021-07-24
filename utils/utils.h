@@ -39,6 +39,14 @@ typedef char * string;
 		value;															\
 	})
 
+#define json_get_value_default(jobj, type, key, defval)({								\
+		type value = (type)defval;											\
+		json_object * jvalue = NULL;									\
+		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);		\
+		if(ok) { value = (type)json_object_get_##type(jvalue); }	\
+		value;															\
+	})
+
 #ifndef debug_printf
 #ifdef _DEBUG
 #define debug_printf(fmt, ...) do {	\

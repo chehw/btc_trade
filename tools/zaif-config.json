@@ -1,0 +1,6 @@
+{ 
+	"exchange_name": "zaif::trade", 
+	"base_url": "https://api.zaif.jp/tapi",
+	"version": "",
+	"credentials_file": ".private/credentials-zaif.json" // <== replace with your credentials_file
+}

@@ -126,15 +126,18 @@ static int shell_init(struct shell_context * shell)
 	return 0;
 }
 
-static gboolean on_shell_timer(shell_context_t * shell)
-{
-	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+//~ static gboolean on_shell_timer(shell_context_t * shell)
+//~ {
+	//~ if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
 	
-	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
-	coincheck_panel_update_order_book(coincheck_panel);
+	//~ panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
+	//~ coincheck_panel_update_order_book(coincheck_panel);
 	
-	return G_SOURCE_CONTINUE;
-}
+	//~ return G_SOURCE_CONTINUE;
+//~ }
+
+extern gboolean coincheck_check_banlance(shell_context_t * shell);
+extern gboolean coincheck_update_order_book(shell_context_t * shell);
 
 static int shell_run(struct shell_context * shell)
 {
@@ -145,7 +148,11 @@ static int shell_run(struct shell_context * shell)
 	
 	shell->is_running = 1;
 	
-	g_timeout_add(1000, (GSourceFunc)on_shell_timer, shell);
+	// update order_book every 1s
+	g_timeout_add(1000, (GSourceFunc)coincheck_update_order_book, shell);
+	
+	// check balance every 300s
+	g_timeout_add(300 * 1000, (GSourceFunc)coincheck_check_banlance, shell);
 	
 	GtkWidget * window = priv->window;
 	gtk_widget_show_all(window);

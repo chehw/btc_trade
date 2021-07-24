@@ -151,31 +151,38 @@ static gboolean on_panel_view_da_draw(GtkWidget * da, cairo_t * cr, panel_view_t
 	return FALSE;
 }
 
-static void update_balance(panel_view_t * panel, json_object * jbalance)
+static void update_balance(panel_view_t * panel)
 {
+	assert(panel && panel->agent);
+	json_object * jbalance = NULL;
+	int rc = 0;
+	rc = coincheck_account_get_balance(panel->agent, &jbalance);
 	if(NULL == jbalance) return;
+	assert(0 == rc);
 	
 	GtkEntry * btc_balance = GTK_ENTRY(panel->btc_balance);
 	GtkEntry * btc_in_use = GTK_ENTRY(panel->btc_in_use);
 	GtkEntry * jpy_balance = GTK_ENTRY(panel->jpy_balance);
 	GtkEntry * jpy_in_use = GTK_ENTRY(panel->jpy_in_use);
 	
-	// clear data
-	gtk_entry_set_text(btc_balance, "");
-	gtk_entry_set_text(btc_in_use,  "");
-	gtk_entry_set_text(jpy_balance, "");
-	gtk_entry_set_text(jpy_in_use,  "");
-	
 	json_object * jstatus = NULL;
 	json_bool ok = json_object_object_get_ex(jbalance, "success", &jstatus);
-	if(!ok || !jstatus || ! json_object_get_boolean(jstatus)) return;
+	if(!ok || !jstatus || ! json_object_get_boolean(jstatus)) {
+		json_object_put(jbalance);
+		return;
+	}
 	
-	const char * btc = json_get_value(jbalance, string, btc);
-	const char * jpy = json_get_value(jbalance, string, jpy);
-	gtk_entry_set_text(btc_balance, btc?btc:"");
-	//~ gtk_entry_set_text(btc_in_use, "");
-	gtk_entry_set_text(jpy_balance, jpy?jpy:"");
-	//~ gtk_entry_set_text(jpy_in_use, "");
+	const char * btc = json_get_value_default(jbalance, string, btc, "");
+	const char * jpy = json_get_value_default(jbalance, string, jpy, "");
+	const char * btc_reserved = json_get_value_default(jbalance, string, btc_reserved, "");
+	const char * jpy_reserved = json_get_value_default(jbalance, string, jpy_reserved, "");
+	
+	gtk_entry_set_text(btc_balance, btc);
+	gtk_entry_set_text(btc_in_use, btc_reserved);
+	gtk_entry_set_text(jpy_balance, jpy);
+	gtk_entry_set_text(jpy_in_use, jpy_reserved);
+	
+	json_object_put(jbalance);
 	return;
 }
 
@@ -194,14 +201,7 @@ int coincheck_panel_init(trading_agency_t * agent, shell_context_t * shell)
 		g_signal_connect(da_chart, "draw", G_CALLBACK(on_panel_view_da_draw), panel);
 	}
 	
-	
-	json_object * jbalance = NULL;
-	int rc = 0;
-	rc = coincheck_account_get_balance(agent, &jbalance);
-	if(0 == rc && jbalance) {
-		update_balance(panel, jbalance);
-	}
-	if(jbalance) json_object_put(jbalance);
+	update_balance(panel);
 	
 	return 0;
 }
@@ -224,9 +224,12 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 	int num_bids = json_object_array_length(jbids);
 	
 	struct order_book_data *asks_list = NULL, *bids_list = NULL;
-	
+
+#define MAX_ORDERS_DEPTH	(30) // only check the first 30 orders 
 	double max_amount = 0.0;
 	if(num_asks > 0) {
+		if(num_asks > MAX_ORDERS_DEPTH) num_asks = MAX_ORDERS_DEPTH;
+		
 		asks_list = calloc(num_asks, sizeof(*asks_list));
 		assert(asks_list);
 		
@@ -236,13 +239,13 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 			asks_list[i].rate = json_object_get_string(json_object_array_get_idx(jask, 0));
 			asks_list[i].amount = json_object_get_string(json_object_array_get_idx(jask, 1));
 			asks_list[i].d_amount = atof(asks_list[i].amount);
-			
-			if(i >= 30) continue;	// only check the first 30 orders 
 			if(asks_list[i].d_amount > max_amount) max_amount = asks_list[i].d_amount;
 		}
 	}
 	
+	
 	if(num_bids > 0) {
+		if(num_bids > MAX_ORDERS_DEPTH) num_bids = MAX_ORDERS_DEPTH;
 		bids_list = calloc(num_bids, sizeof(*bids_list));
 		assert(bids_list);
 		
@@ -252,8 +255,6 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 			bids_list[i].rate = json_object_get_string(json_object_array_get_idx(jbid, 0));
 			bids_list[i].amount = json_object_get_string(json_object_array_get_idx(jbid, 1));
 			bids_list[i].d_amount = atof(bids_list[i].amount);
-			
-			if(i >= 30) continue;	// only check the first 30 orders 	
 			if(bids_list[i].d_amount > max_amount) max_amount = bids_list[i].d_amount;
 		}
 	}
@@ -322,4 +323,38 @@ int coincheck_panel_update_order_book(panel_view_t * panel)
 	json_object_put(jorders);
 	
 	return 0;
+}
+
+static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
+static void auto_unlock_mutex_ptr(void * ptr)
+{
+	pthread_mutex_t ** p_mutex = ptr;
+	if(p_mutex && *p_mutex) pthread_mutex_unlock(*p_mutex);
+	return;
+}
+
+#define auto_lock() AUTO_UNLOCK_MUTEX_PTR pthread_mutex_t *_m_ = &s_mutex; \
+		pthread_mutex_lock(_m_)
+
+extern gboolean coincheck_check_banlance(shell_context_t * shell)
+{
+	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
+	
+	auto_lock();
+	update_balance(coincheck_panel);
+	
+	return G_SOURCE_CONTINUE;
+}
+extern gboolean coincheck_update_order_book(shell_context_t * shell)
+{
+	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
+	
+	auto_lock();
+	coincheck_panel_update_order_book(coincheck_panel);
+	
+	
+	return G_SOURCE_CONTINUE;
 }

@@ -38,23 +38,15 @@
 #include <curl/curl.h>
 
 #include "json-response.h"
+#include "utils.h"
 
 #define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
-void auto_unlock_mutex_ptr(void * ptr)
+static void auto_unlock_mutex_ptr(void * ptr)
 {
 	pthread_mutex_t ** p_mutex = ptr;
 	if(p_mutex && *p_mutex) pthread_mutex_unlock(*p_mutex);
 	return;
 }
-
-typedef const char * string;
-#define json_get_value(jobj, type, key) ({ \
-		type value = (type)0;	\
-		json_object * jvalue = NULL;	\
-		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);	\
-		if(ok && jvalue) value = (type)json_object_get_##type(jvalue);	\
-		value;	\
-	})
 
 static int trading_agency_load_config(struct trading_agency * agent, json_object * jconfig);
 static int trading_agency_init(struct trading_agency * agent);
