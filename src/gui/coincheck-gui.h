@@ -37,6 +37,13 @@ typedef struct panel_view
 	GtkWidget * ask_orders;
 	GtkWidget * bid_orders;
 	
+	GtkWidget * btc_buy;
+	GtkWidget * btc_buy_rate;
+	GtkWidget * btc_buy_amount;
+	GtkWidget * btc_sell;
+	GtkWidget * btc_sell_rate;
+	GtkWidget * btc_sell_amount;
+	
 	trading_agency_t * agent;
 	pthread_mutex_t mutex;
 	

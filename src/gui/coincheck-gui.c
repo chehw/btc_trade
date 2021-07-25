@@ -61,17 +61,303 @@ enum ORDER_BOOK_COLUMN
 	ORDER_BOOK_COLUMN_scales,
 	ORDER_BOOK_COLUMNS_COUNT
 };
+
+
+//~ static int s_first_run;
+static gboolean hide_info(GtkWidget * info_bar)
+{
+	//~ s_first_run = !s_first_run;
+	//~ if(s_first_run) return G_SOURCE_CONTINUE;
+	
+	if(info_bar) gtk_widget_hide(info_bar);
+	return G_SOURCE_REMOVE;
+}
+
+static void show_info(shell_context_t * shell, const char * fmt, ...)
+{
+	GtkWidget * info_bar = shell->info_bar;
+	GtkWidget * message_label = shell->message_label;
+	gtk_info_bar_set_message_type(GTK_INFO_BAR(info_bar), GTK_MESSAGE_INFO);
+	
+	char msg[4096] = "";
+	va_list ap;
+	va_start(ap, fmt);
+	int cb = vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+	printf("msg: %s\n", msg);
+	if(cb > 0) {
+		gtk_label_set_text(GTK_LABEL(message_label), msg);
+		gtk_widget_show(message_label);
+		gtk_widget_show(info_bar);
+		
+		const guint inteval = 5000; // show infobar 3 seconds
+		g_timeout_add(inteval, (GSourceFunc)hide_info, info_bar);
+	}
+	return;
+}
+
+
+static void coincheck_panel_btc_buy(GtkWidget * button, panel_view_t * panel)
+{
+	GtkWidget * entry = panel->btc_buy_rate;
+	GtkWidget * spin = panel->btc_buy_amount;
+	GtkWidget * btc_buy = panel->btc_buy;
+	
+	double rate = 0.0;
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	const char * sz_rate = gtk_entry_get_text(GTK_ENTRY(entry));
+	if(sz_rate) rate = atof(sz_rate);
+	
+	if(rate < 1.0 || amount < 0.001) {
+		// todo: popup error message
+		gtk_widget_set_sensitive(btc_buy, FALSE);
+		return;
+	}
+	
+	///< @todo : update order history and unsettled order list
+	trading_agency_t * agent = panel->agent;
+	assert(agent);
+	
+	json_object * jresult = NULL;
+	int rc = coincheck_new_order(agent, 
+		"btc_jpy", "buy", 
+		rate, amount, &jresult);
+	if(rc) {
+		show_info(panel->shell, 
+			"%s(rate=%s, amount=%.3f): ERROR, rc = %d", __FUNCTION__, sz_rate, amount, rc);
+	}
+	if(jresult) {
+		show_info(panel->shell, 
+			"%s(rate=%s, amount=%.3f): %s", __FUNCTION__, sz_rate, amount,
+			json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_SPACED)
+		);
+		json_object_put(jresult);
+	}
+	
+}
+static void coincheck_panel_btc_sell(GtkWidget * button, panel_view_t * panel)
+{
+	GtkWidget * entry = panel->btc_sell_rate;
+	GtkWidget * spin = panel->btc_sell_amount;
+	GtkWidget * btc_sell = panel->btc_sell;
+	
+	double rate = 0.0;
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	const char * sz_rate = gtk_entry_get_text(GTK_ENTRY(entry));
+	if(sz_rate) rate = atof(sz_rate);
+
+	if(rate < 1.0 || amount < 0.001) {
+		// todo: popup error message
+		gtk_widget_set_sensitive(btc_sell, FALSE);
+		return;
+	}
+	
+	///< @todo : update order history and unsettled order list
+	trading_agency_t * agent = panel->agent;
+	json_object * jresult = NULL;
+	int rc = coincheck_new_order(agent, 
+		"btc_jpy", "sell", 
+		rate, amount, &jresult);
+	if(rc) {
+		show_info(panel->shell, 
+			"%s(rate=%s, amount=%.3f): ERROR, rc = %d", __FUNCTION__, sz_rate, amount, rc);
+	}
+	if(jresult) {
+		show_info(panel->shell, 
+			"%s(rate=%s, amount=%.3f): %s", rc, __FUNCTION__, sz_rate, amount,
+			json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_SPACED)
+		);
+		json_object_put(jresult);
+	}
+}
+static void coincheck_panel_buy_rate_changed(GtkEntry * entry, panel_view_t * panel)
+{
+	GtkWidget * btc_buy = panel->btc_buy;
+	GtkWidget * spin = panel->btc_buy_amount;
+	assert(spin);
+	
+	int length = gtk_entry_get_text_length(entry);
+	const char * text = gtk_entry_get_text(entry);
+	if(length <= 0) return;
+	
+	double rate = atof(text);
+	if(rate < 1.0) {
+		// todo: popup error message
+		gtk_widget_set_sensitive(btc_buy, FALSE);
+		return;
+	}
+	char verified_text[100] = "";
+	snprintf(verified_text, sizeof(verified_text), "%.2f", rate);
+	gtk_entry_set_text(entry, verified_text);
+	
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	if(amount < 0.001) {
+		gtk_widget_grab_focus(spin);
+	}else {
+		gtk_widget_grab_focus(btc_buy);
+	}
+	gtk_widget_set_sensitive(btc_buy, ((rate >= 1.0) && (amount >= 0.001)));
+	return;
+}
+static void coincheck_panel_buy_amount_changed(GtkSpinButton  * spin, panel_view_t * panel)
+{
+	GtkWidget * btc_buy = panel->btc_buy;
+	GtkWidget * entry = panel->btc_buy_rate;
+	assert(entry);
+	
+	int length = gtk_entry_get_text_length(GTK_ENTRY(entry));
+	if(length <= 0) return;
+	const char * text = gtk_entry_get_text(GTK_ENTRY(entry));
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	if(amount < 0.001) return;
+	
+	double rate = atof(text);
+	if(rate < 1.0) {
+		// todo: popup error message
+		gtk_widget_grab_focus(entry);
+		return;
+	}else {
+		gtk_widget_grab_focus(btc_buy);
+	}
+	
+	gtk_widget_set_sensitive(btc_buy, ((rate >= 1.0) && (amount >= 0.001)));
+	return;
+}
+static void coincheck_panel_sell_rate_changed(GtkEntry * entry, panel_view_t * panel)
+{
+	GtkWidget * btc_sell = panel->btc_sell;
+	GtkWidget * spin = panel->btc_sell_amount;
+	assert(spin);
+	
+	int length = gtk_entry_get_text_length(entry);
+	const char * text = gtk_entry_get_text(entry);
+	if(length <= 0) return;
+	
+	double rate = atof(text);
+	if(rate < 1.0) {
+		// todo: popup error message
+		gtk_widget_set_sensitive(btc_sell, FALSE);
+		return;
+	}
+	char verified_text[100] = "";
+	snprintf(verified_text, sizeof(verified_text), "%.2f", rate);
+	gtk_entry_set_text(entry, verified_text);
+	
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	if(amount < 0.001) {
+		gtk_widget_grab_focus(spin);
+	}else {
+		gtk_widget_grab_focus(btc_sell);
+	}
+	gtk_widget_set_sensitive(btc_sell, ((rate >= 1.0) && (amount >= 0.001)));
+	return;
+}
+static void coincheck_panel_sell_amount_changed(GtkSpinButton  * spin, panel_view_t * panel)
+{
+	GtkWidget * btc_sell = panel->btc_sell;
+	GtkWidget * entry = panel->btc_sell_rate;
+	assert(entry);
+	
+	int length = gtk_entry_get_text_length(GTK_ENTRY(entry));
+	if(length <= 0) return;
+	const char * text = gtk_entry_get_text(GTK_ENTRY(entry));
+	double amount = gtk_spin_button_get_value(GTK_SPIN_BUTTON(spin));
+	if(amount < 0.001) return;
+	
+	double rate = atof(text);
+	if(rate < 1.0) {
+		// todo: popup error message
+		gtk_widget_grab_focus(entry);
+		return;
+	}else {
+		gtk_widget_grab_focus(btc_sell);
+	}
+	
+	gtk_widget_set_sensitive(btc_sell, ((rate >= 1.0) && (amount >= 0.001)));
+	return;
+}
+
+static void on_ask_orders_selection_changed(GtkTreeSelection *selection, panel_view_t * panel)
+{
+	GtkTreeModel * model = NULL;
+	GtkTreeIter iter;
+	
+	gboolean ok = gtk_tree_selection_get_selected(selection, &model, &iter);
+	if(!ok) return;
+	
+	gchar * rate = NULL;
+	gchar * amount = NULL;
+	
+	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
+	
+	// update btc_sell ( to sell to an existing ask order ) 
+	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_sell_rate), rate);
+	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_sell_amount), (double)atof(amount));
+	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
+}
+
+
+static void on_bid_orders_selection_changed(GtkTreeSelection *selection, panel_view_t * panel)
+{
+	GtkTreeModel * model = NULL;
+	GtkTreeIter iter;
+	
+	gboolean ok = gtk_tree_selection_get_selected(selection, &model, &iter);
+	if(!ok) return;
+	
+	gchar * rate = NULL;
+	gchar * amount = NULL;
+	
+	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
+	
+	// update btc_buy ( to buy from an existing bid order ) 
+	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_buy_rate), rate);
+	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_buy_amount), (double)atof(amount));
+	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_buy_rate), panel);
+}
+
+
 int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 {
 	assert(panel && builder);
-	panel->frame = GTK_WIDGET(gtk_builder_get_object(builder, "main_panel"));
+	panel->frame       = GTK_WIDGET(gtk_builder_get_object(builder, "main_panel"));
 	panel->btc_balance = GTK_WIDGET(gtk_builder_get_object(builder, "btc_balance"));
-	panel->btc_in_use = GTK_WIDGET(gtk_builder_get_object(builder, "btc_in_use"));
+	panel->btc_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "btc_in_use"));
 	panel->jpy_balance = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_balance"));
-	panel->jpy_in_use = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_in_use"));
-	panel->da_chart = GTK_WIDGET(gtk_builder_get_object(builder, "da_chart"));
-	panel->ask_orders = GTK_WIDGET(gtk_builder_get_object(builder, "ask_orders"));
-	panel->bid_orders = GTK_WIDGET(gtk_builder_get_object(builder, "bid_orders"));
+	panel->jpy_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_in_use"));
+	panel->da_chart    = GTK_WIDGET(gtk_builder_get_object(builder, "da_chart"));
+	panel->ask_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "ask_orders"));
+	panel->bid_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "bid_orders"));
+	
+	GtkTreeSelection * ask_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->ask_orders));
+	GtkTreeSelection * bid_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->bid_orders));
+	assert(ask_orders_selection && bid_orders_selection);
+	g_signal_connect(ask_orders_selection, "changed", G_CALLBACK(on_ask_orders_selection_changed), panel);
+	g_signal_connect(bid_orders_selection, "changed", G_CALLBACK(on_bid_orders_selection_changed), panel);
+	
+	
+	panel->btc_buy         = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy"));
+	panel->btc_buy_rate    = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy_rate"));
+	panel->btc_buy_amount  = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy_amount"));
+	panel->btc_sell        = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell"));
+	panel->btc_sell_rate   = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell_rate"));
+	panel->btc_sell_amount = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell_amount"));
+	assert(panel->btc_buy && panel->btc_buy_rate && panel->btc_buy_amount);
+	assert(panel->btc_sell && panel->btc_sell_rate && panel->btc_sell_amount);
+	
+	gtk_widget_set_sensitive(panel->btc_buy, FALSE);
+	gtk_widget_set_sensitive(panel->btc_sell, FALSE);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_buy_amount), 0.001, 100.0);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_sell_amount), 0.001, 100.0);
+	
+	g_signal_connect(panel->btc_buy, "clicked", G_CALLBACK(coincheck_panel_btc_buy), panel);
+	g_signal_connect(panel->btc_sell, "clicked", G_CALLBACK(coincheck_panel_btc_sell), panel);
+	g_signal_connect(panel->btc_buy_rate, "activate", G_CALLBACK(coincheck_panel_buy_rate_changed), panel);
+	g_signal_connect(panel->btc_buy_amount, "value-changed", G_CALLBACK(coincheck_panel_buy_amount_changed), panel);
+	g_signal_connect(panel->btc_sell_rate, "activate", G_CALLBACK(coincheck_panel_sell_rate_changed), panel);
+	g_signal_connect(panel->btc_sell_amount, "value-changed", G_CALLBACK(coincheck_panel_sell_amount_changed), panel);
+	
+	
 	
 	// init ask tree
 	GtkListStore * store = NULL;
@@ -340,6 +626,8 @@ static void auto_unlock_mutex_ptr(void * ptr)
 extern gboolean coincheck_check_banlance(shell_context_t * shell)
 {
 	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+	if(!shell->action_state) return G_SOURCE_CONTINUE;
+	
 	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
 	
 	auto_lock();
@@ -350,6 +638,8 @@ extern gboolean coincheck_check_banlance(shell_context_t * shell)
 extern gboolean coincheck_update_order_book(shell_context_t * shell)
 {
 	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
+	if(!shell->action_state) return G_SOURCE_CONTINUE;
+	
 	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
 	
 	auto_lock();

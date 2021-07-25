@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+#include <gtk/gtk.h>
+
 typedef struct shell_context
 {
 	void * priv;
@@ -15,6 +17,12 @@ typedef struct shell_context
 	
 	int quit;
 	int is_running;
+	
+	int action_state; // 0. update info manually; 1: automatically
+	
+	GtkWidget * info_area;
+	GtkWidget * info_bar;
+	GtkWidget * message_label;
 	
 	int (* load_config)(struct shell_context * shell, json_object * jconfig);
 	int (* init)(struct shell_context * shell);

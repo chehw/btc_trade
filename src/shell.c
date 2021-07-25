@@ -198,6 +198,12 @@ static void shell_private_free(shell_private_t * priv)
 	return;
 }
 
+static gboolean on_toggle_action_state(GtkSwitch *widget, gboolean state, shell_context_t * shell)
+{
+	shell->action_state = state;
+	return FALSE;
+}
+
 static void init_windows(shell_private_t * priv)
 {
 	assert(priv && priv->shell);
@@ -221,8 +227,26 @@ static void init_windows(shell_private_t * priv)
 	gtk_header_bar_set_title(GTK_HEADER_BAR(header_bar), "btc-trader");
 	gtk_window_set_titlebar(GTK_WINDOW(window), header_bar);
 	
+	GtkWidget * info_area = GTK_WIDGET(gtk_builder_get_object(builder, "app_window_info_area"));
+	assert(info_area);
+	shell->info_area = info_area;
+	
+	GtkWidget * info_bar = gtk_info_bar_new();
+	gtk_widget_set_no_show_all (info_bar, TRUE);
+	GtkWidget * message_label = gtk_label_new ("");
+	
+	GtkWidget * content_area = gtk_info_bar_get_content_area(GTK_INFO_BAR(info_bar));
+	gtk_container_add (GTK_CONTAINER (content_area), message_label);
+	g_signal_connect(info_bar, "response", G_CALLBACK (gtk_widget_hide), NULL);
+	shell->info_bar = info_bar;
+	shell->message_label = message_label;
+	gtk_grid_attach(GTK_GRID(info_area), info_bar, 0, 0, 2, 1);
+	
 	GtkWidget * toggle_button = gtk_switch_new();
 	gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), toggle_button);
+	g_signal_connect(toggle_button, "state-set", G_CALLBACK(on_toggle_action_state), shell);
+	shell->action_state = TRUE;
+	gtk_switch_set_active(GTK_SWITCH(toggle_button), shell->action_state);
 
 	
 	priv->window = window;
