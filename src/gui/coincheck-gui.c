@@ -51,6 +51,8 @@ panel_view_t * panel_view_init(panel_view_t * panel, const char * title, shell_c
 }
 void panel_view_cleanup(panel_view_t * panel)
 {
+	if(NULL == panel) return;
+	panel_ticker_context_cleanup(panel->ticker_ctx);
 	return;
 }
 
@@ -290,7 +292,7 @@ static void on_ask_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	
 	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
 	
-	// update btc_sell ( to sell to an existing ask order ) 
+	// update btc_sell ( to sell to an existing bid order ) 
 	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_sell_rate), rate);
 	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_sell_amount), (double)atof(amount));
 	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
@@ -310,12 +312,31 @@ static void on_bid_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	
 	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
 	
-	// update btc_buy ( to buy from an existing bid order ) 
+	// update btc_buy ( to buy from an existing ask order ) 
 	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_buy_rate), rate);
 	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_buy_amount), (double)atof(amount));
 	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_buy_rate), panel);
 }
 
+static gboolean update_tickers(panel_view_t * panel)
+{
+	assert(panel && panel->shell);
+	shell_context_t * shell = panel->shell;
+	if(shell->quit) return G_SOURCE_REMOVE;
+	if(!shell->action_state || !shell->is_running) return G_SOURCE_CONTINUE;
+	
+	struct panel_ticker_context * ctx = panel->ticker_ctx;
+	int rc = 0;
+	trading_agency_t * agent = panel->agent;
+	json_object * jtickers = NULL;
+	rc = coincheck_public_get_ticker(agent, &jtickers);
+	if(0 == rc && jtickers) {
+		panel_ticker_append(ctx, jtickers);
+	}
+	if(jtickers) json_object_put(jtickers);
+	
+	return G_SOURCE_CONTINUE;
+}
 
 int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 {
@@ -358,7 +379,6 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	g_signal_connect(panel->btc_sell_amount, "value-changed", G_CALLBACK(coincheck_panel_sell_amount_changed), panel);
 	
 	
-	
 	// init ask tree
 	GtkListStore * store = NULL;
 	GtkTreeView * tree = GTK_TREE_VIEW(panel->ask_orders);
@@ -393,6 +413,7 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	
 	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
 	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
+	g_object_unref(store);
 	
 	// init bid tree
 	tree = GTK_TREE_VIEW(panel->bid_orders);
@@ -423,9 +444,22 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	
 	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
 	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
-	
-	
 	g_object_unref(store);
+	
+	
+	// init trade_history
+	panel->trade_history = GTK_WIDGET(gtk_builder_get_object(builder, "trade_history"));
+	assert(panel->trade_history);
+	tree = GTK_TREE_VIEW(panel->bid_orders);
+	assert(tree);
+	
+	// init tickers
+	struct panel_ticker_context * ctx = panel_ticker_context_init(panel->ticker_ctx, 0);
+	assert(ctx);
+	panel_ticker_load_from_builder(ctx, builder);
+	g_timeout_add(1000, (GSourceFunc)update_tickers, panel);
+	
+	
 	return 0;
 }
 
@@ -647,4 +681,127 @@ extern gboolean coincheck_update_order_book(shell_context_t * shell)
 	
 	
 	return G_SOURCE_CONTINUE;
+}
+
+/*********************************
+ * struct panel_ticker
+*********************************/
+
+#define PANEL_TICKER_MAX_HISTORY_SIZE (1000000)
+struct panel_ticker_context * panel_ticker_context_init(struct panel_ticker_context * ctx, size_t max_history_size)
+{
+	if(NULL == ctx) ctx = calloc(1, sizeof(*ctx));
+	if(max_history_size <= 0) max_history_size = PANEL_TICKER_MAX_HISTORY_SIZE;
+	
+	struct coincheck_ticker * history = calloc(max_history_size, sizeof(*history));
+	assert(history);
+	
+	ctx->tickers_history = history;
+	ctx->history_size = max_history_size;
+	return ctx;
+}
+void panel_ticker_context_cleanup(struct panel_ticker_context * ctx)
+{
+	if(NULL == ctx) return;
+	if(ctx->tickers_history) {
+		free(ctx->tickers_history);
+		ctx->tickers_history = NULL;
+	}
+	ctx->history_size = 0;
+	ctx->start_pos = 0;
+	ctx->length = 0;
+	return;
+}
+
+ssize_t panel_ticker_get_lastest_history(struct panel_ticker_context * ctx, size_t count, struct coincheck_ticker ** p_tickers)
+{
+	if(NULL == ctx->tickers_history || ctx->history_size == 0) return -1;
+	if(count == 0 || count > ctx->length) count = ctx->length;
+	if(count == 0) return 0;
+	if(NULL == p_tickers) return (ssize_t)count;
+	
+	size_t start_pos = ctx->start_pos;
+	size_t end_pos = start_pos + count;
+	if(end_pos > ctx->history_size) end_pos -= ctx->history_size;
+	
+	struct coincheck_ticker * tickers = *p_tickers;
+	if(NULL == tickers) {
+		tickers = malloc(count * sizeof(*tickers));
+		assert(tickers);
+		*p_tickers = tickers;
+	}
+	
+	if(end_pos > start_pos) {
+		memcpy(tickers, ctx->tickers_history + start_pos, sizeof(*tickers) * count);
+	}else {
+		size_t partial_length = ctx->history_size - start_pos;
+		assert(partial_length > 0 && end_pos > 0);
+		
+		memcpy(tickers, ctx->tickers_history + start_pos, sizeof(*tickers) * partial_length);
+		memcpy(tickers + partial_length, ctx->tickers_history,  sizeof(*tickers) * end_pos);
+	}
+	return (ssize_t)count;
+}
+
+int panel_ticker_load_from_builder(struct panel_ticker_context * ctx, GtkBuilder * builder)
+{
+	GtkWidget *last = NULL, *ask = NULL, *bid = NULL, *high = NULL, *low = NULL, *volume = NULL;
+	ctx->widget.last = last = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_last"));
+	ctx->widget.ask = ask = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_ask"));
+	ctx->widget.bid = bid = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_bid"));
+	ctx->widget.high = high = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_high"));
+	ctx->widget.low = low = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_low"));
+	ctx->widget.volume = volume = GTK_WIDGET(gtk_builder_get_object(builder, "ticker_volume"));
+	
+	assert(last && ask && bid && high && low && volume);
+	return 0;
+}
+
+static int ticker_history_append(struct panel_ticker_context * ctx, const struct coincheck_ticker * ticker)
+{
+	assert(ctx->tickers_history && ctx->history_size > 0);
+	size_t cur_pos = ctx->start_pos + ctx->length;
+	cur_pos %= ctx->history_size;
+	
+	ctx->tickers_history[cur_pos] = *ticker;
+	
+	if(ctx->length < ctx->history_size) {
+		++ctx->length;
+	}else {
+		++ctx->start_pos;
+		if(ctx->start_pos == ctx->history_size) ctx->start_pos = 0;
+	}
+	return 0;
+}
+
+int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker)
+{
+	assert(ctx && jticker);
+	struct coincheck_ticker ticker = { 0 };
+	ticker.last = json_get_value(jticker, double, last);
+	ticker.ask = json_get_value(jticker, double, ask);
+	ticker.bid = json_get_value(jticker, double, bid);
+	ticker.high = json_get_value(jticker, double, high);
+	ticker.low = json_get_value(jticker, double, low);
+	ticker.volume = json_get_value(jticker, double, volume);
+	ticker.timestamp = json_get_value(jticker, int, timestamp);
+	
+	ctx->current = ticker;
+	ticker_history_append(ctx, &ticker);
+	
+	char sz_val[100] = "";
+#define set_entry(key) do { \
+		snprintf(sz_val, sizeof(sz_val), "%s: %.2f", #key, ticker.key); \
+		gtk_entry_set_text(GTK_ENTRY(ctx->widget.key), sz_val); \
+	} while(0)
+	
+	set_entry(last);
+	set_entry(ask);
+	set_entry(bid);
+	set_entry(high);
+	set_entry(low);
+	set_entry(volume);
+#undef set_entry
+	
+	return 0;
 }

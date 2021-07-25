@@ -10,6 +10,7 @@ extern "C" {
 #include "trading_agency.h"
 
 #include <pthread.h>
+#include <time.h>
 
 
 struct order_book_data
@@ -19,7 +20,42 @@ struct order_book_data
 	double d_amount;
 	double scales;	// range: [0, 100]
 };
+
+struct coincheck_ticker
+{
+	double last;
+	double bid;
+	double ask;
+	double high;
+	double low;
+	double volume;
+	int64_t timestamp;
+};
+
+struct panel_ticker_context
+{
+	struct {
+		GtkWidget * last;
+		GtkWidget * bid;
+		GtkWidget * ask;
+		GtkWidget * high;
+		GtkWidget * low;
+		GtkWidget * volume;
+	} widget;
 	
+	struct coincheck_ticker current;
+	
+	size_t history_size;	// window size
+	size_t length;
+	size_t start_pos;
+	struct coincheck_ticker * tickers_history; // Circular array
+};
+struct panel_ticker_context * panel_ticker_context_init(struct panel_ticker_context * ctx, size_t max_history_size);
+void panel_ticker_context_cleanup(struct panel_ticker_context * ctx);
+int panel_ticker_load_from_builder(struct panel_ticker_context * ctx, GtkBuilder * builder);
+int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker);
+ssize_t panel_ticker_get_lastest_history(struct panel_ticker_context * ctx, size_t count, struct coincheck_ticker ** p_tickers);
+
 typedef struct panel_view
 {
 	void * user_data;
@@ -43,6 +79,11 @@ typedef struct panel_view
 	GtkWidget * btc_sell;
 	GtkWidget * btc_sell_rate;
 	GtkWidget * btc_sell_amount;
+	
+	struct timespec last_query_time;
+	GtkWidget * trade_history;
+	
+	struct panel_ticker_context ticker_ctx[1];
 	
 	trading_agency_t * agent;
 	pthread_mutex_t mutex;
