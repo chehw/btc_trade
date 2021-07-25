@@ -292,10 +292,10 @@ static void on_ask_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	
 	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
 	
-	// update btc_sell ( to sell to an existing bid order ) 
-	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_sell_rate), rate);
-	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_sell_amount), (double)atof(amount));
-	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
+	// update btc_buy ( to buy from an existing ask order ) 
+	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_buy_rate), rate);
+	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_buy_amount), (double)atof(amount));
+	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_buy_rate), panel);
 }
 
 
@@ -312,10 +312,10 @@ static void on_bid_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	
 	gtk_tree_model_get(model, &iter, ORDER_BOOK_COLUMN_rate, &rate, ORDER_BOOK_COLUMN_amount, &amount, -1);
 	
-	// update btc_buy ( to buy from an existing ask order ) 
-	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_buy_rate), rate);
-	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_buy_amount), (double)atof(amount));
-	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_buy_rate), panel);
+	// update btc_sell ( to sell to an existing bid order ) 
+	if(rate) gtk_entry_set_text(GTK_ENTRY(panel->btc_sell_rate), rate);
+	if(amount) gtk_spin_button_set_value(GTK_SPIN_BUTTON(panel->btc_sell_amount), (double)atof(amount));
+	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
 }
 
 static gboolean update_tickers(panel_view_t * panel)
@@ -379,9 +379,9 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	g_signal_connect(panel->btc_sell_amount, "value-changed", G_CALLBACK(coincheck_panel_sell_amount_changed), panel);
 	
 	
-	// init ask tree
+	// init bid tree
 	GtkListStore * store = NULL;
-	GtkTreeView * tree = GTK_TREE_VIEW(panel->ask_orders);
+	GtkTreeView * tree = GTK_TREE_VIEW(panel->bid_orders);
 	assert(tree);
 	GtkTreeViewColumn * col = NULL;
 	GtkCellRenderer * cr = NULL;
@@ -415,8 +415,8 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
 	g_object_unref(store);
 	
-	// init bid tree
-	tree = GTK_TREE_VIEW(panel->bid_orders);
+	// init ask tree
+	tree = GTK_TREE_VIEW(panel->ask_orders);
 	assert(tree);
 	cr = gtk_cell_renderer_text_new();
 	g_object_set(cr, "foreground", "red", NULL);

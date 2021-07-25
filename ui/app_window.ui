@@ -475,7 +475,7 @@
                                     <property name="vexpand">True</property>
                                     <property name="shadow_type">in</property>
                                     <child>
-                                      <object class="GtkTreeView" id="ask_orders">
+                                      <object class="GtkTreeView" id="bid_orders">
                                         <property name="visible">True</property>
                                         <property name="can_focus">True</property>
                                         <child internal-child="selection">
@@ -497,7 +497,7 @@
                                     <property name="hexpand">True</property>
                                     <property name="shadow_type">in</property>
                                     <child>
-                                      <object class="GtkTreeView" id="bid_orders">
+                                      <object class="GtkTreeView" id="ask_orders">
                                         <property name="visible">True</property>
                                         <property name="can_focus">True</property>
                                         <child internal-child="selection">
