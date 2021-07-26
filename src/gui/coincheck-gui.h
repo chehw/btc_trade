@@ -68,7 +68,15 @@ typedef struct panel_view
 	GtkWidget * btc_in_use;
 	GtkWidget * jpy_balance;
 	GtkWidget * jpy_in_use;
-	GtkWidget * da_chart;
+	
+	struct {
+		GtkWidget * da;
+		cairo_surface_t * surface;
+		int image_width;
+		int image_height;
+		int da_width;
+		int da_height;
+	}chart_ctx;
 	
 	GtkWidget * ask_orders;
 	GtkWidget * bid_orders;

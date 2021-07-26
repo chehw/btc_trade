@@ -92,7 +92,7 @@ static void show_info(shell_context_t * shell, const char * fmt, ...)
 		gtk_widget_show(message_label);
 		gtk_widget_show(info_bar);
 		
-		const guint inteval = 5000; // show infobar 3 seconds
+		const guint inteval = 5000; // show infobar 5 seconds
 		g_timeout_add(inteval, (GSourceFunc)hide_info, info_bar);
 	}
 	return;
@@ -318,6 +318,7 @@ static void on_bid_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
 }
 
+void draw_tickers(panel_view_t * panel);
 static gboolean update_tickers(panel_view_t * panel)
 {
 	assert(panel && panel->shell);
@@ -335,6 +336,7 @@ static gboolean update_tickers(panel_view_t * panel)
 	}
 	if(jtickers) json_object_put(jtickers);
 	
+	draw_tickers(panel);
 	return G_SOURCE_CONTINUE;
 }
 
@@ -346,7 +348,7 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	panel->btc_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "btc_in_use"));
 	panel->jpy_balance = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_balance"));
 	panel->jpy_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_in_use"));
-	panel->da_chart    = GTK_WIDGET(gtk_builder_get_object(builder, "da_chart"));
+	panel->chart_ctx.da = GTK_WIDGET(gtk_builder_get_object(builder, "da_chart"));
 	panel->ask_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "ask_orders"));
 	panel->bid_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "bid_orders"));
 	
@@ -466,8 +468,33 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 
 static gboolean on_panel_view_da_draw(GtkWidget * da, cairo_t * cr, panel_view_t * panel)
 {
-	cairo_set_source_rgba(cr, 0, 0, 0, 1);
+	static int margin = 10;
+	int width = gtk_widget_get_allocated_width(da);
+	int height = gtk_widget_get_allocated_height(da);
+	
+	if(width <= 1 || height <= 1) return FALSE;
+	
+	cairo_surface_t * surface = panel->chart_ctx.surface;
+	int image_width = panel->chart_ctx.image_width;
+	int image_height = panel->chart_ctx.image_height;
+	
+	width -= margin * 2;
+	height -= margin * 2;
+	
+	if(NULL == surface || image_width <= 1 || image_height <= 1 ) 
+	{
+		cairo_set_source_rgba(cr, 0, 0, 0, 1);
+		cairo_paint(cr);
+		return FALSE;
+	}
+	
+	double scale_x = (double)width / (double)image_width;
+	double scale_y = (double)height / (double)image_height;
+	
+	cairo_scale(cr, scale_x, scale_y);
+	cairo_set_source_surface(cr, surface, margin, margin);
 	cairo_paint(cr);
+	
 	return FALSE;
 }
 
@@ -514,11 +541,11 @@ int coincheck_panel_init(trading_agency_t * agent, shell_context_t * shell)
 	assert(agent);
 	panel->agent = agent;
 	
-	GtkWidget * da_chart = panel->da_chart;
-	assert(da_chart);
+	GtkWidget * da = panel->chart_ctx.da;
+	assert(da);
 	
-	if(da_chart) {
-		g_signal_connect(da_chart, "draw", G_CALLBACK(on_panel_view_da_draw), panel);
+	if(da) {
+		g_signal_connect(da, "draw", G_CALLBACK(on_panel_view_da_draw), panel);
 	}
 	
 	update_balance(panel);
@@ -720,7 +747,7 @@ ssize_t panel_ticker_get_lastest_history(struct panel_ticker_context * ctx, size
 	if(count == 0) return 0;
 	if(NULL == p_tickers) return (ssize_t)count;
 	
-	size_t start_pos = ctx->start_pos;
+	size_t start_pos = ctx->start_pos + ctx->length - count;
 	size_t end_pos = start_pos + count;
 	if(end_pos > ctx->history_size) end_pos -= ctx->history_size;
 	
@@ -778,19 +805,11 @@ int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker
 {
 	assert(ctx && jticker);
 	struct coincheck_ticker ticker = { 0 };
-	ticker.last = json_get_value(jticker, double, last);
-	ticker.ask = json_get_value(jticker, double, ask);
-	ticker.bid = json_get_value(jticker, double, bid);
-	ticker.high = json_get_value(jticker, double, high);
-	ticker.low = json_get_value(jticker, double, low);
-	ticker.volume = json_get_value(jticker, double, volume);
-	ticker.timestamp = json_get_value(jticker, int, timestamp);
 	
-	ctx->current = ticker;
-	ticker_history_append(ctx, &ticker);
 	
 	char sz_val[100] = "";
 #define set_entry(key) do { \
+		ticker.key = json_get_value(jticker, double, key); \
 		snprintf(sz_val, sizeof(sz_val), "%s: %.2f", #key, ticker.key); \
 		gtk_entry_set_text(GTK_ENTRY(ctx->widget.key), sz_val); \
 	} while(0)
@@ -802,6 +821,8 @@ int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker
 	set_entry(low);
 	set_entry(volume);
 #undef set_entry
-	
+
+	ctx->current = ticker;
+	ticker_history_append(ctx, &ticker);
 	return 0;
 }
