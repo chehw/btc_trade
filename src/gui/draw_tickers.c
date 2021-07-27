@@ -34,7 +34,8 @@
 
 #include "coincheck-gui.h"
 
-static const int s_window_size = 1200;
+static const int s_window_size = 2400;
+static const int s_max_tickers = 2000;
 static const int s_image_width = s_window_size;
 static const int s_image_height = 600;
 
@@ -57,7 +58,7 @@ void draw_tickers(panel_view_t * panel)
 	cairo_paint(cr);
 	
 	struct coincheck_ticker * tickers = NULL;
-	ssize_t count = panel_ticker_get_lastest_history(panel->ticker_ctx, 1000, &tickers);
+	ssize_t count = panel_ticker_get_lastest_history(panel->ticker_ctx, s_max_tickers, &tickers);
 	if(count <= 0) {
 		if(tickers) free(tickers);
 		return;

@@ -89,7 +89,6 @@ typedef struct panel_view
 	GtkWidget * btc_sell_amount;
 	
 	struct timespec last_query_time;
-	GtkWidget * trade_history;
 	
 	struct panel_ticker_context ticker_ctx[1];
 	

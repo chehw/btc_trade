@@ -139,8 +139,8 @@ static int parse_json_orders(struct order_history * history, json_object * jorde
 		const char * created_at = json_get_value(jorder, string, created_at);
 		assert(created_at);
 		strptime(created_at, "%Y-%m-%dT%H:%M:%S.000Z", &t);
-		order->sz_created_at = created_at;
-		order->created_at = mktime(&t);
+		order->sz_created_at = created_at;	
+		order->created_at = mktime(&t) - timezone; // gmt to localtime
 	
 		orders[i] = order;
 	}
@@ -243,7 +243,7 @@ static int parse_json_unsettled_orders(struct order_history * history, json_obje
 		assert(created_at);
 		strptime(created_at, "%Y-%m-%dT%H:%M:%S.000Z", &t);
 		order->sz_created_at = created_at;
-		order->created_at = mktime(&t);
+		order->created_at = mktime(&t) - timezone; // gmt to localtime
 	
 		unsettled_orders[i] = order;
 	}
@@ -367,9 +367,14 @@ static void set_details_or_order_id(GtkTreeViewColumn *col,
 		ORDER_HISTORY_COLUMN_side, &side,
 		ORDER_HISTORY_COLUMN_data_ptr, &data_ptr, -1);
 	if(data_ptr) {
+		if(col_id != ORDER_HISTORY_COLUMN_rate) return;
+		
 		char text[100] = "";
-		snprintf(text, sizeof(text), "%lu", (unsigned long)((struct order_details *)data_ptr)->order_id);
-		g_object_set(cr, "text", text, NULL);
+		snprintf(text, sizeof(text), "id: %lu", (unsigned long)((struct order_details *)data_ptr)->order_id);
+		g_object_set(cr, 
+			"text", text, 
+			"foreground", "black",
+			NULL);
 	}else {
 		char * text = NULL;
 		assert(col_id != ORDER_HISTORY_COLUMN_order_id && col_id < ORDER_HISTORY_COLUMNS_COUNT);
@@ -421,7 +426,7 @@ void init_order_history_tree(GtkTreeView * tree)
 	gtk_tree_view_column_set_resizable(col, TRUE);
 	gtk_tree_view_column_set_reorderable(col, TRUE);
 	gtk_tree_view_column_set_expand(col, TRUE);
-	//~ gtk_tree_view_column_set_cell_data_func(col, cr, set_details_or_order_id, GINT_TO_POINTER(ORDER_HISTORY_COLUMN_side), NULL);
+	gtk_tree_view_column_set_cell_data_func(col, cr, set_details_or_order_id, GINT_TO_POINTER(ORDER_HISTORY_COLUMN_side), NULL);
 	gtk_tree_view_append_column(tree, col);
 	
 	cr = gtk_cell_renderer_text_new();
@@ -492,25 +497,27 @@ void init_unsettled_list_tree(GtkTreeView * tree)
 	gtk_tree_view_append_column(tree, col);
 	
 	cr = gtk_cell_renderer_text_new();
-	col = gtk_tree_view_column_new_with_attributes("order_type", cr, "text", UNSETTLED_LIST_COLUMN_order_type, NULL);
+	col = gtk_tree_view_column_new_with_attributes("type", cr, "text", UNSETTLED_LIST_COLUMN_order_type, NULL);
 	gtk_tree_view_column_set_resizable(col, TRUE);
 	gtk_tree_view_column_set_reorderable(col, TRUE);
 	gtk_tree_view_append_column(tree, col);
 	
 	cr = gtk_cell_renderer_text_new();
+	g_object_set(cr, "xalign", 0.95, NULL);
 	col = gtk_tree_view_column_new_with_attributes("rate", cr, "text", UNSETTLED_LIST_COLUMN_rate, NULL);
 	gtk_tree_view_column_set_resizable(col, TRUE);
 	gtk_tree_view_column_set_reorderable(col, TRUE);
 	gtk_tree_view_append_column(tree, col);
 	
 	cr = gtk_cell_renderer_text_new();
-	col = gtk_tree_view_column_new_with_attributes("pending_amount", cr, "text", UNSETTLED_LIST_COLUMN_pending_amount, NULL); 
+	g_object_set(cr, "xalign", 0.95, NULL);
+	col = gtk_tree_view_column_new_with_attributes("amount", cr, "text", UNSETTLED_LIST_COLUMN_pending_amount, NULL); 
 	gtk_tree_view_column_set_resizable(col, TRUE);
 	gtk_tree_view_column_set_reorderable(col, TRUE);
 	gtk_tree_view_append_column(tree, col);
 	
 	cr = gtk_cell_renderer_text_new();
-	col = gtk_tree_view_column_new_with_attributes("order_id", cr, "text", ORDER_HISTORY_COLUMN_order_id, NULL);
+	col = gtk_tree_view_column_new_with_attributes("order id", cr, "text", ORDER_HISTORY_COLUMN_order_id, NULL);
 	gtk_tree_view_column_set_resizable(col, TRUE);
 	gtk_tree_view_column_set_reorderable(col, TRUE);
 	gtk_tree_view_append_column(tree, col);
@@ -553,10 +560,17 @@ void order_history_update(struct order_history * history, GtkTreeView * orders_t
 
 			}
 			
+			/* convert gmtime to localtime */
+			char timestamp[100] = "";
+			struct tm t[1];
+			memset(t, 0, sizeof(t));
+			localtime_r(&order->created_at, t);
+			strftime(timestamp, sizeof(timestamp), "%Y/%m/%d %H:%M:%S %Z", t);
+			
 			gtk_tree_store_append(store, &iter, &parent);
 			gtk_tree_store_set(store, &iter, 
 				ORDER_HISTORY_COLUMN_order_id, order->order_id,
-				ORDER_HISTORY_COLUMN_created_at, order->sz_created_at,
+				ORDER_HISTORY_COLUMN_created_at, timestamp,
 				ORDER_HISTORY_COLUMN_funds_btc, order->btc,
 				ORDER_HISTORY_COLUMN_funds_jpy, order->jpy, 
 				ORDER_HISTORY_COLUMN_side, order->side,
@@ -578,13 +592,19 @@ void order_history_update(struct order_history * history, GtkTreeView * orders_t
 			struct unsettled_order_details * unsettled = history->unsettled_orders[i];
 			assert(unsettled);
 			
+			char timestamp[100] = "";
+			struct tm t[1];
+			memset(t, 0, sizeof(t));
+			localtime_r(&unsettled->created_at, t);
+			strftime(timestamp, sizeof(timestamp), "%Y/%m/%d %H:%M:%S %Z", t);
+			
 			gtk_list_store_append(store, &iter);
 			gtk_list_store_set(store, &iter,
 				UNSETTLED_LIST_COLUMN_order_type, unsettled->order_type,
 				UNSETTLED_LIST_COLUMN_order_id, unsettled->order_id,
 				UNSETTLED_LIST_COLUMN_rate, unsettled->rate,
 				UNSETTLED_LIST_COLUMN_pending_amount, unsettled->pending_amount,
-				UNSETTLED_LIST_COLUMN_created_at, unsettled->sz_created_at,
+				UNSETTLED_LIST_COLUMN_created_at, (i==0)?timestamp:unsettled->sz_created_at,
 				UNSETTLED_LIST_COLUMN_data_ptr, unsettled,
 				-1);
 		}

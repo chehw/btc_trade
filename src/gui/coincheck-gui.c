@@ -54,6 +54,8 @@ static void auto_unlock_mutex_ptr(void * ptr)
 
 
 static void update_balance(panel_view_t * panel);
+static gboolean update_orders_history(panel_view_t * panel);
+
 enum ORDER_BOOK_COLUMN
 {
 	ORDER_BOOK_COLUMN_rate,
@@ -128,6 +130,7 @@ static void coincheck_panel_btc_buy(GtkWidget * button, panel_view_t * panel)
 		json_object_put(jresult);
 		
 		update_balance(panel);
+		update_orders_history(panel);
 	}
 	
 }
@@ -165,6 +168,7 @@ static void coincheck_panel_btc_sell(GtkWidget * button, panel_view_t * panel)
 		);
 		json_object_put(jresult);
 		update_balance(panel);
+		update_orders_history(panel);
 	}
 }
 
@@ -848,7 +852,6 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	
 	panel_ticker_load_from_builder(panel->ticker_ctx, builder);
 	
-	load_widget(trade_history, trade_history);
 	load_widget(orders_tree, orders_history);
 	load_widget(unsettled_tree, unsettled_list);
 	
@@ -862,6 +865,7 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	//~ g_signal_connect(panel->unsettled_tree, "button-press-event", (GCallback)on_clicked_unsettled_tree, panel);
 	g_signal_connect(panel->unsettled_tree, "row-activated", G_CALLBACK(on_row_activated_unsettled_tree), panel);
 	
+
 	return 0;
 }
 
