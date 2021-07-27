@@ -807,6 +807,12 @@ static void on_row_activated_unsettled_tree(GtkTreeView * tree, GtkTreePath * pa
 		
 	}
 }
+static void on_refresh(GtkButton * button, panel_view_t * panel)
+{
+	update_orders_history(panel);
+	update_balance(panel);
+	return;
+}
 
 #define load_widget(field, widget_name) do { \
 		panel->field =  GTK_WIDGET(gtk_builder_get_object(builder, #widget_name)); \
@@ -860,7 +866,7 @@ int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
 	
 	GtkWidget * refresh = GTK_WIDGET(gtk_builder_get_object(builder, "refresh_orders_history"));
 	assert(refresh);
-	g_signal_connect_swapped(refresh, "clicked", G_CALLBACK(update_orders_history), panel);
+	g_signal_connect(refresh, "clicked", G_CALLBACK(on_refresh), panel);
 	
 	//~ g_signal_connect(panel->unsettled_tree, "button-press-event", (GCallback)on_clicked_unsettled_tree, panel);
 	g_signal_connect(panel->unsettled_tree, "row-activated", G_CALLBACK(on_row_activated_unsettled_tree), panel);

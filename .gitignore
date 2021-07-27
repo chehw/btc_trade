@@ -56,7 +56,7 @@ Mkfile.old
 dkms.conf
 
 # app settings
-.private
+.private*
 bin
 log
 !src
