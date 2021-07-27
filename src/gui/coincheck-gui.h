@@ -11,7 +11,7 @@ extern "C" {
 
 #include <pthread.h>
 #include <time.h>
-
+#include "order_history.h"
 
 struct order_book_data
 {
@@ -101,6 +101,9 @@ typedef struct panel_view
 	struct order_book_data * asks_list;
 	struct order_book_data * bids_list;
 	
+	struct order_history orders[1];
+	GtkWidget * orders_tree;
+	GtkWidget * unsettled_tree;
 }panel_view_t;
 
 panel_view_t * panel_view_init(panel_view_t * panel, const char * title, shell_context_t * shell);

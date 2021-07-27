@@ -38,24 +38,22 @@
 #include "shell.h"
 #include "utils.h"
 
-panel_view_t * panel_view_init(panel_view_t * panel, const char * title, shell_context_t * shell)
+#include "order_history.h"
+
+static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
+static void auto_unlock_mutex_ptr(void * ptr)
 {
-	if(NULL == panel) panel = calloc(1, sizeof(*panel));
-	assert(panel);
-	
-	pthread_mutex_init(&panel->mutex, NULL);
-	
-	panel->shell = shell;
-	if(title) strncpy(panel->title, title, sizeof(panel->title));
-	return panel;
-}
-void panel_view_cleanup(panel_view_t * panel)
-{
-	if(NULL == panel) return;
-	panel_ticker_context_cleanup(panel->ticker_ctx);
+	pthread_mutex_t ** p_mutex = ptr;
+	if(p_mutex && *p_mutex) pthread_mutex_unlock(*p_mutex);
 	return;
 }
 
+#define auto_lock() AUTO_UNLOCK_MUTEX_PTR pthread_mutex_t *_m_ = &s_mutex; \
+		pthread_mutex_lock(_m_)
+
+
+static void update_balance(panel_view_t * panel);
 enum ORDER_BOOK_COLUMN
 {
 	ORDER_BOOK_COLUMN_rate,
@@ -64,17 +62,11 @@ enum ORDER_BOOK_COLUMN
 	ORDER_BOOK_COLUMNS_COUNT
 };
 
-
-//~ static int s_first_run;
 static gboolean hide_info(GtkWidget * info_bar)
 {
-	//~ s_first_run = !s_first_run;
-	//~ if(s_first_run) return G_SOURCE_CONTINUE;
-	
 	if(info_bar) gtk_widget_hide(info_bar);
 	return G_SOURCE_REMOVE;
 }
-
 static void show_info(shell_context_t * shell, const char * fmt, ...)
 {
 	GtkWidget * info_bar = shell->info_bar;
@@ -134,6 +126,8 @@ static void coincheck_panel_btc_buy(GtkWidget * button, panel_view_t * panel)
 			json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_SPACED)
 		);
 		json_object_put(jresult);
+		
+		update_balance(panel);
 	}
 	
 }
@@ -170,8 +164,10 @@ static void coincheck_panel_btc_sell(GtkWidget * button, panel_view_t * panel)
 			json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_SPACED)
 		);
 		json_object_put(jresult);
+		update_balance(panel);
 	}
 }
+
 static void coincheck_panel_buy_rate_changed(GtkEntry * entry, panel_view_t * panel)
 {
 	GtkWidget * btc_buy = panel->btc_buy;
@@ -279,6 +275,9 @@ static void coincheck_panel_sell_amount_changed(GtkSpinButton  * spin, panel_vie
 	return;
 }
 
+/**************************************
+ * orders book
+***************************************/
 static void on_ask_orders_selection_changed(GtkTreeSelection *selection, panel_view_t * panel)
 {
 	GtkTreeModel * model = NULL;
@@ -318,6 +317,9 @@ static void on_bid_orders_selection_changed(GtkTreeSelection *selection, panel_v
 	coincheck_panel_buy_rate_changed(GTK_ENTRY(panel->btc_sell_rate), panel);
 }
 
+/**************************************
+ * tickers
+***************************************/
 void draw_tickers(panel_view_t * panel);
 static gboolean update_tickers(panel_view_t * panel)
 {
@@ -340,131 +342,22 @@ static gboolean update_tickers(panel_view_t * panel)
 	return G_SOURCE_CONTINUE;
 }
 
-int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
+/**************************************
+ * order history
+***************************************/
+static gboolean update_orders_history(panel_view_t * panel)
 {
-	assert(panel && builder);
-	panel->frame       = GTK_WIDGET(gtk_builder_get_object(builder, "main_panel"));
-	panel->btc_balance = GTK_WIDGET(gtk_builder_get_object(builder, "btc_balance"));
-	panel->btc_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "btc_in_use"));
-	panel->jpy_balance = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_balance"));
-	panel->jpy_in_use  = GTK_WIDGET(gtk_builder_get_object(builder, "jpy_in_use"));
-	panel->chart_ctx.da = GTK_WIDGET(gtk_builder_get_object(builder, "da_chart"));
-	panel->ask_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "ask_orders"));
-	panel->bid_orders  = GTK_WIDGET(gtk_builder_get_object(builder, "bid_orders"));
+	assert(panel && panel->shell);
+	shell_context_t * shell = panel->shell;
+	if(shell->quit) return G_SOURCE_REMOVE;
 	
-	GtkTreeSelection * ask_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->ask_orders));
-	GtkTreeSelection * bid_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->bid_orders));
-	assert(ask_orders_selection && bid_orders_selection);
-	g_signal_connect(ask_orders_selection, "changed", G_CALLBACK(on_ask_orders_selection_changed), panel);
-	g_signal_connect(bid_orders_selection, "changed", G_CALLBACK(on_bid_orders_selection_changed), panel);
+	struct order_history * history = panel->orders;
+	int rc = history->get_orders(history, panel->agent);
+	if(rc) return G_SOURCE_CONTINUE;
 	
-	
-	panel->btc_buy         = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy"));
-	panel->btc_buy_rate    = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy_rate"));
-	panel->btc_buy_amount  = GTK_WIDGET(gtk_builder_get_object(builder, "btc_buy_amount"));
-	panel->btc_sell        = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell"));
-	panel->btc_sell_rate   = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell_rate"));
-	panel->btc_sell_amount = GTK_WIDGET(gtk_builder_get_object(builder, "btc_sell_amount"));
-	assert(panel->btc_buy && panel->btc_buy_rate && panel->btc_buy_amount);
-	assert(panel->btc_sell && panel->btc_sell_rate && panel->btc_sell_amount);
-	
-	gtk_widget_set_sensitive(panel->btc_buy, FALSE);
-	gtk_widget_set_sensitive(panel->btc_sell, FALSE);
-	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_buy_amount), 0.001, 100.0);
-	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_sell_amount), 0.001, 100.0);
-	
-	g_signal_connect(panel->btc_buy, "clicked", G_CALLBACK(coincheck_panel_btc_buy), panel);
-	g_signal_connect(panel->btc_sell, "clicked", G_CALLBACK(coincheck_panel_btc_sell), panel);
-	g_signal_connect(panel->btc_buy_rate, "activate", G_CALLBACK(coincheck_panel_buy_rate_changed), panel);
-	g_signal_connect(panel->btc_buy_amount, "value-changed", G_CALLBACK(coincheck_panel_buy_amount_changed), panel);
-	g_signal_connect(panel->btc_sell_rate, "activate", G_CALLBACK(coincheck_panel_sell_rate_changed), panel);
-	g_signal_connect(panel->btc_sell_amount, "value-changed", G_CALLBACK(coincheck_panel_sell_amount_changed), panel);
-	
-	
-	// init bid tree
-	GtkListStore * store = NULL;
-	GtkTreeView * tree = GTK_TREE_VIEW(panel->bid_orders);
-	assert(tree);
-	GtkTreeViewColumn * col = NULL;
-	GtkCellRenderer * cr = NULL;
-	
-	cr = gtk_cell_renderer_progress_new();
-	g_object_set(cr, 
-		"text", "",
-		"inverted", TRUE, 
-		NULL);
-	col = gtk_tree_view_column_new_with_attributes("volumes", cr, 
-		"value", ORDER_BOOK_COLUMN_scales,
-		NULL);
-	gtk_tree_view_column_set_spacing(col, 5);
-	gtk_tree_view_column_set_expand(col, TRUE);
-	gtk_tree_view_append_column(tree, col);
-	
-	cr = gtk_cell_renderer_text_new();
-	col = gtk_tree_view_column_new_with_attributes("amount", cr, "text", ORDER_BOOK_COLUMN_amount, NULL);
-	gtk_tree_view_column_set_min_width(col, 80);
-	gtk_tree_view_append_column(tree, col);
-	
-	cr = gtk_cell_renderer_text_new();
-	g_object_set(cr, "foreground", "green", NULL);
-	col = gtk_tree_view_column_new_with_attributes("rate", cr, 
-		"text", ORDER_BOOK_COLUMN_rate, 
-		NULL);
-	gtk_tree_view_column_set_min_width(col, 80);
-	gtk_tree_view_append_column(tree, col);
-	
-	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
-	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
-	g_object_unref(store);
-	
-	// init ask tree
-	tree = GTK_TREE_VIEW(panel->ask_orders);
-	assert(tree);
-	cr = gtk_cell_renderer_text_new();
-	g_object_set(cr, "foreground", "red", NULL);
-	col = gtk_tree_view_column_new_with_attributes("rate", cr, 
-		"text", ORDER_BOOK_COLUMN_rate, 
-		NULL);
-	gtk_tree_view_column_set_min_width(col, 80);
-	gtk_tree_view_append_column(tree, col);
-	
-	cr = gtk_cell_renderer_text_new();
-	col = gtk_tree_view_column_new_with_attributes("amount", cr, "text", ORDER_BOOK_COLUMN_amount, NULL);
-	gtk_tree_view_column_set_min_width(col, 80);
-	gtk_tree_view_append_column(tree, col);
-	
-	cr = gtk_cell_renderer_progress_new();
-	g_object_set(cr, 
-		"text", "",
-		"inverted", FALSE, 
-		NULL);
-	col = gtk_tree_view_column_new_with_attributes("volumes", cr, 
-		"value", ORDER_BOOK_COLUMN_scales, 
-		NULL);
-	gtk_tree_view_column_set_expand(col, TRUE);
-	gtk_tree_view_append_column(tree, col);
-	
-	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
-	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
-	g_object_unref(store);
-	
-	
-	// init trade_history
-	panel->trade_history = GTK_WIDGET(gtk_builder_get_object(builder, "trade_history"));
-	assert(panel->trade_history);
-	tree = GTK_TREE_VIEW(panel->bid_orders);
-	assert(tree);
-	
-	// init tickers
-	struct panel_ticker_context * ctx = panel_ticker_context_init(panel->ticker_ctx, 0);
-	assert(ctx);
-	panel_ticker_load_from_builder(ctx, builder);
-	g_timeout_add(1000, (GSourceFunc)update_tickers, panel);
-	
-	
-	return 0;
+	order_history_update(history, GTK_TREE_VIEW(panel->orders_tree), GTK_TREE_VIEW(panel->unsettled_tree));
+	return G_SOURCE_CONTINUE;
 }
-
 
 static gboolean on_panel_view_da_draw(GtkWidget * da, cairo_t * cr, panel_view_t * panel)
 {
@@ -533,26 +426,10 @@ static void update_balance(panel_view_t * panel)
 	return;
 }
 
-int coincheck_panel_init(trading_agency_t * agent, shell_context_t * shell)
-{
-	panel_view_t * panel = shell_get_main_panel(shell, "coincheck");
-	assert(panel);
-	
-	assert(agent);
-	panel->agent = agent;
-	
-	GtkWidget * da = panel->chart_ctx.da;
-	assert(da);
-	
-	if(da) {
-		g_signal_connect(da, "draw", G_CALLBACK(on_panel_view_da_draw), panel);
-	}
-	
-	update_balance(panel);
-	
-	return 0;
-}
 
+/****************************************************
+ * order book
+***************************************************/
 static void update_orders(panel_view_t * panel, json_object * jorders)
 {
 	if(NULL == jorders) return;
@@ -589,7 +466,6 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 			if(asks_list[i].d_amount > max_amount) max_amount = asks_list[i].d_amount;
 		}
 	}
-	
 	
 	if(num_bids > 0) {
 		if(num_bids > MAX_ORDERS_DEPTH) num_bids = MAX_ORDERS_DEPTH;
@@ -655,7 +531,7 @@ static void update_orders(panel_view_t * panel, json_object * jorders)
 	g_object_unref(bids_store);
 	
 }
-int coincheck_panel_update_order_book(panel_view_t * panel)
+int update_order_book(panel_view_t * panel)
 {
 	trading_agency_t * agent = panel->agent;
 	assert(agent);
@@ -668,35 +544,28 @@ int coincheck_panel_update_order_book(panel_view_t * panel)
 	update_orders(panel, jorders);
 
 	json_object_put(jorders);
-	
 	return 0;
 }
 
-static pthread_mutex_t s_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
-static void auto_unlock_mutex_ptr(void * ptr)
+/*****************************************************
+ * background tasks 
+ * ( on_timeout callbacks <== g_timeout_add)
+***************************************************/
+gboolean coincheck_check_banlance(shell_context_t * shell)
 {
-	pthread_mutex_t ** p_mutex = ptr;
-	if(p_mutex && *p_mutex) pthread_mutex_unlock(*p_mutex);
-	return;
-}
-
-#define auto_lock() AUTO_UNLOCK_MUTEX_PTR pthread_mutex_t *_m_ = &s_mutex; \
-		pthread_mutex_lock(_m_)
-
-extern gboolean coincheck_check_banlance(shell_context_t * shell)
-{
-	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
-	if(!shell->action_state) return G_SOURCE_CONTINUE;
+	if(shell->quit) return G_SOURCE_REMOVE;
+	if(!shell->action_state || !shell->is_running) return G_SOURCE_CONTINUE;
 	
-	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
+	panel_view_t * panel = shell_get_main_panel(shell, "coincheck");
+	if(!panel->agent) return G_SOURCE_CONTINUE;
 	
 	auto_lock();
-	update_balance(coincheck_panel);
+	update_balance(panel);
 	
 	return G_SOURCE_CONTINUE;
 }
-extern gboolean coincheck_update_order_book(shell_context_t * shell)
+
+gboolean coincheck_update_order_book(shell_context_t * shell)
 {
 	if(!shell->is_running || shell->quit) return G_SOURCE_REMOVE;
 	if(!shell->action_state) return G_SOURCE_CONTINUE;
@@ -704,16 +573,13 @@ extern gboolean coincheck_update_order_book(shell_context_t * shell)
 	panel_view_t * coincheck_panel = shell_get_main_panel(shell, "coincheck");
 	
 	auto_lock();
-	coincheck_panel_update_order_book(coincheck_panel);
-	
-	
+	update_order_book(coincheck_panel);
 	return G_SOURCE_CONTINUE;
 }
 
 /*********************************
- * struct panel_ticker
+ * panel::tickers
 *********************************/
-
 #define PANEL_TICKER_MAX_HISTORY_SIZE (1000000)
 struct panel_ticker_context * panel_ticker_context_init(struct panel_ticker_context * ctx, size_t max_history_size)
 {
@@ -824,5 +690,231 @@ int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker
 
 	ctx->current = ticker;
 	ticker_history_append(ctx, &ticker);
+	return 0;
+}
+
+
+
+
+/*****************************************************
+ * ui::init
+*****************************************************/
+static void init_bid_tree(GtkTreeView * tree)
+{
+	GtkListStore * store = NULL;
+	GtkTreeViewColumn * col = NULL;
+	GtkCellRenderer * cr = NULL;
+	
+	cr = gtk_cell_renderer_progress_new();
+	g_object_set(cr, 
+		"text", "",
+		"inverted", TRUE, 
+		NULL);
+	col = gtk_tree_view_column_new_with_attributes("volumes", cr, 
+		"value", ORDER_BOOK_COLUMN_scales,
+		NULL);
+	gtk_tree_view_column_set_spacing(col, 5);
+	gtk_tree_view_column_set_expand(col, TRUE);
+	gtk_tree_view_append_column(tree, col);
+	
+	cr = gtk_cell_renderer_text_new();
+	col = gtk_tree_view_column_new_with_attributes("amount", cr, "text", ORDER_BOOK_COLUMN_amount, NULL);
+	gtk_tree_view_column_set_min_width(col, 80);
+	gtk_tree_view_append_column(tree, col);
+	
+	cr = gtk_cell_renderer_text_new();
+	g_object_set(cr, "foreground", "green", NULL);
+	col = gtk_tree_view_column_new_with_attributes("rate", cr, 
+		"text", ORDER_BOOK_COLUMN_rate, 
+		NULL);
+	gtk_tree_view_column_set_min_width(col, 80);
+	gtk_tree_view_append_column(tree, col);
+	
+	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
+	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
+	g_object_unref(store);
+	return;
+}
+
+static void init_ask_tree(GtkTreeView * tree)
+{
+	GtkListStore * store = NULL;
+	GtkTreeViewColumn * col = NULL;
+	GtkCellRenderer * cr = NULL;
+	
+	cr = gtk_cell_renderer_text_new();
+	g_object_set(cr, "foreground", "red", NULL);
+	col = gtk_tree_view_column_new_with_attributes("rate", cr, 
+		"text", ORDER_BOOK_COLUMN_rate, 
+		NULL);
+	gtk_tree_view_column_set_min_width(col, 80);
+	gtk_tree_view_append_column(tree, col);
+	
+	cr = gtk_cell_renderer_text_new();
+	col = gtk_tree_view_column_new_with_attributes("amount", cr, "text", ORDER_BOOK_COLUMN_amount, NULL);
+	gtk_tree_view_column_set_min_width(col, 80);
+	gtk_tree_view_append_column(tree, col);
+	
+	cr = gtk_cell_renderer_progress_new();
+	g_object_set(cr, 
+		"text", "",
+		"inverted", FALSE, 
+		NULL);
+	col = gtk_tree_view_column_new_with_attributes("volumes", cr, 
+		"value", ORDER_BOOK_COLUMN_scales, 
+		NULL);
+	gtk_tree_view_column_set_expand(col, TRUE);
+	gtk_tree_view_append_column(tree, col);
+	
+	store = gtk_list_store_new(ORDER_BOOK_COLUMNS_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
+	gtk_tree_view_set_model(tree, GTK_TREE_MODEL(store));
+	g_object_unref(store);
+	return;
+}
+
+static void on_row_activated_unsettled_tree(GtkTreeView * tree, GtkTreePath * path, GtkTreeViewColumn * col, panel_view_t * panel)
+{
+	if(NULL == path || NULL == col) return;
+	GtkTreeModel * model = gtk_tree_view_get_model(tree);
+	GtkTreeIter iter;
+	if(NULL == model) return;
+	
+	gboolean ok = gtk_tree_model_get_iter(model, &iter, path);
+	if(!ok) return;
+	
+	int64_t order_id = 0;
+	gtk_tree_model_get(model, &iter, UNSETTLED_LIST_COLUMN_order_id, &order_id, -1);
+	
+	
+	const char * colname = gtk_tree_view_column_get_title(col);
+	if(NULL == colname || !colname[0]) {
+		char sz_order_id[100] = "";
+		snprintf(sz_order_id, sizeof(sz_order_id), "%" PRIi64, order_id);
+		
+		json_object * jresult = NULL;
+		int rc = coincheck_cancel_order(panel->agent, sz_order_id, &jresult);
+		if(0 == rc) {
+			fprintf(stderr, "canceled order: %s\n", json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_PRETTY));
+			show_info(panel->shell, "cancel order: %ld", (long)json_object_to_json_string_ext(jresult, JSON_C_TO_STRING_SPACED));
+			gtk_list_store_remove(GTK_LIST_STORE(model), &iter);
+			
+			update_balance(panel);
+		}
+		
+	}
+}
+
+#define load_widget(field, widget_name) do { \
+		panel->field =  GTK_WIDGET(gtk_builder_get_object(builder, #widget_name)); \
+		assert(panel->field); \
+	} while(0)
+int panel_view_load_from_builder(panel_view_t * panel, GtkBuilder * builder)
+{
+	assert(panel && builder);
+	load_widget(frame        , main_panel);
+	load_widget(btc_balance  , btc_balance);
+	load_widget(btc_in_use   , btc_in_use);
+	load_widget(jpy_balance  , jpy_balance);
+	load_widget(jpy_in_use   , jpy_in_use);
+	load_widget(chart_ctx.da , da_chart);
+	load_widget(ask_orders   , ask_orders);
+	load_widget(bid_orders   , bid_orders);
+	GtkTreeSelection * ask_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->ask_orders));
+	GtkTreeSelection * bid_orders_selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(panel->bid_orders));
+	assert(ask_orders_selection && bid_orders_selection);
+	g_signal_connect(ask_orders_selection, "changed", G_CALLBACK(on_ask_orders_selection_changed), panel);
+	g_signal_connect(bid_orders_selection, "changed", G_CALLBACK(on_bid_orders_selection_changed), panel);
+	
+	
+	load_widget(btc_buy         , btc_buy);
+	load_widget(btc_buy_rate    , btc_buy_rate);
+	load_widget(btc_buy_amount  , btc_buy_amount);
+	load_widget(btc_sell        , btc_sell);
+	load_widget(btc_sell_rate   , btc_sell_rate);
+	load_widget(btc_sell_amount , btc_sell_amount);
+	gtk_widget_set_sensitive(panel->btc_buy, FALSE);
+	gtk_widget_set_sensitive(panel->btc_sell, FALSE);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_buy_amount), 0.0, 100.0);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(panel->btc_sell_amount), 0.0, 100.0);
+	g_signal_connect(panel->btc_buy, "clicked", G_CALLBACK(coincheck_panel_btc_buy), panel);
+	g_signal_connect(panel->btc_sell, "clicked", G_CALLBACK(coincheck_panel_btc_sell), panel);
+	g_signal_connect(panel->btc_buy_rate, "activate", G_CALLBACK(coincheck_panel_buy_rate_changed), panel);
+	g_signal_connect(panel->btc_buy_amount, "value-changed", G_CALLBACK(coincheck_panel_buy_amount_changed), panel);
+	g_signal_connect(panel->btc_sell_rate, "activate", G_CALLBACK(coincheck_panel_sell_rate_changed), panel);
+	g_signal_connect(panel->btc_sell_amount, "value-changed", G_CALLBACK(coincheck_panel_sell_amount_changed), panel);
+	
+	init_bid_tree(GTK_TREE_VIEW(panel->bid_orders));
+	init_ask_tree(GTK_TREE_VIEW(panel->ask_orders));
+	
+	panel_ticker_load_from_builder(panel->ticker_ctx, builder);
+	
+	load_widget(trade_history, trade_history);
+	load_widget(orders_tree, orders_history);
+	load_widget(unsettled_tree, unsettled_list);
+	
+	init_order_history_tree(GTK_TREE_VIEW(panel->orders_tree));
+	init_unsettled_list_tree(GTK_TREE_VIEW(panel->unsettled_tree));
+	
+	GtkWidget * refresh = GTK_WIDGET(gtk_builder_get_object(builder, "refresh_orders_history"));
+	assert(refresh);
+	g_signal_connect_swapped(refresh, "clicked", G_CALLBACK(update_orders_history), panel);
+	
+	//~ g_signal_connect(panel->unsettled_tree, "button-press-event", (GCallback)on_clicked_unsettled_tree, panel);
+	g_signal_connect(panel->unsettled_tree, "row-activated", G_CALLBACK(on_row_activated_unsettled_tree), panel);
+	
+	return 0;
+}
+
+/*********************************************
+ * public interfaces:
+ * panel_view 
+ * 
+*********************************************/
+panel_view_t * panel_view_init(panel_view_t * panel, const char * title, shell_context_t * shell)
+{
+	if(NULL == panel) panel = calloc(1, sizeof(*panel));
+	assert(panel);
+	
+	pthread_mutex_init(&panel->mutex, NULL);
+	
+	panel->shell = shell;
+	if(title) strncpy(panel->title, title, sizeof(panel->title));
+	
+	struct panel_ticker_context * ctx = panel_ticker_context_init(panel->ticker_ctx, 0);
+	assert(ctx);
+	
+	order_history_init(panel->orders);
+	return panel;
+}
+
+void panel_view_cleanup(panel_view_t * panel)
+{
+	if(NULL == panel) return;
+	panel_ticker_context_cleanup(panel->ticker_ctx);
+	return;
+}
+
+int coincheck_panel_init(trading_agency_t * agent, shell_context_t * shell)
+{
+	panel_view_t * panel = shell_get_main_panel(shell, "coincheck");
+	assert(panel);
+	
+	assert(agent);
+	panel->agent = agent;
+	GtkWidget * da = panel->chart_ctx.da;
+	assert(da);
+	
+	if(da) {
+		g_signal_connect(da, "draw", G_CALLBACK(on_panel_view_da_draw), panel);
+	}
+	
+	update_balance(panel);
+	update_tickers(panel);
+	update_orders_history(panel);
+	
+	// run backgound tasks
+	g_timeout_add(1000, (GSourceFunc)update_tickers, panel);
+	//~ g_timeout_add(3000, (GSourceFunc)update_orders_history, panel);
+	
 	return 0;
 }

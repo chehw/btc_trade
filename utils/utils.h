@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 ssize_t bin2hex(const void * data, size_t length, char ** p_hex);
 ssize_t hex2bin(const char * hex, size_t length, void ** p_data);
@@ -31,6 +32,8 @@ double app_timer_stop(app_timer_t * timer);
 #define app_timer_get_elapsed(timer) app_timer_stop(timer)
 
 typedef char * string;
+typedef int64_t int64;
+typedef _Bool boolean;
 #define json_get_value(jobj, type, key) ({								\
 		type value = (type)0;											\
 		json_object * jvalue = NULL;									\
