@@ -604,7 +604,7 @@ void order_history_update(struct order_history * history, GtkTreeView * orders_t
 				UNSETTLED_LIST_COLUMN_order_id, unsettled->order_id,
 				UNSETTLED_LIST_COLUMN_rate, unsettled->rate,
 				UNSETTLED_LIST_COLUMN_pending_amount, unsettled->pending_amount,
-				UNSETTLED_LIST_COLUMN_created_at, (i==0)?timestamp:unsettled->sz_created_at,
+				UNSETTLED_LIST_COLUMN_created_at, timestamp,
 				UNSETTLED_LIST_COLUMN_data_ptr, unsettled,
 				-1);
 		}
