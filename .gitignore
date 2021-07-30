@@ -88,3 +88,6 @@ log
 !benchmarks/*.h
 !benchmarks/*.sh
 
+!tests/gui
+!tests/gui/*.c
+!tests/gui/*.h

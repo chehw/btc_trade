@@ -40,7 +40,16 @@ case "$TARGET" in
 		
 	test-spin-button)
 		${LINKER} -o tests/${TARGET} \
-			tests/gui/test-spin-button.c \
+			tests/gui/${TARGET}.c \
+			$(pkg-config --cflags --libs gtk+-3.0) \
+			-lm -lpthread -ljson-c -lcurl
+		;;
+		
+	test-bank_accounts)
+		${LINKER} -o tests/${TARGET} \
+			tests/gui/${TARGET}.c \
+			src/json-response.c \
+			utils/utils.c utils/auto_buffer.c \
 			$(pkg-config --cflags --libs gtk+-3.0) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
