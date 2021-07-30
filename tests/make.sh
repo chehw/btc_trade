@@ -53,6 +53,14 @@ case "$TARGET" in
 			$(pkg-config --cflags --libs gtk+-3.0) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
+	test_db-utils)
+		${LINKER} -o tests/${TARGET} \
+			tests/${TARGET}.c \
+			src/json-response.c \
+			utils/utils.c utils/auto_buffer.c \
+			-lm -lpthread -ljson-c -lcurl -ldb
+		;;
+		
 	*)
 		echo "not found"
 		exit 1

@@ -234,8 +234,8 @@ static int load_bank_infos(struct shell_context * shell)
 		assert(jbank);
 		const char * code = json_get_value(jbank, string, code);
 		const char * name = json_get_value(jbank, string, name);
-		const char * half_width_kana = json_get_value(jbank, string, half_width_kana);
-		const char * full_width_kana = json_get_value(jbank, string, full_width_kana);
+		const char * half_width_kana = json_get_value(jbank, string, halfWidthKana);
+		const char * full_width_kana = json_get_value(jbank, string, fullWidthKana);
 		const char * hiragana = json_get_value(jbank, string, hiragana);
 		gtk_list_store_append(store, &iter);
 		gtk_list_store_set(store, &iter, 
