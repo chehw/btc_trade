@@ -46,6 +46,8 @@
 
 static void test_public_apis(trading_agency_t * agent, json_object * japi_doc);
 static void test_private_apis(trading_agency_t * aggent, json_object * japi_doc);
+static void test_withdraws_api(trading_agency_t * agent);
+
 void run_test(const char * conf_file, json_object * japi_doc);
 
 int main(int argc, char **argv)
@@ -104,8 +106,10 @@ void run_test(const char * conf_file, json_object * japi_doc)
 	
 	assert(0 == rc);
 	
-	test_public_apis(coincheck, japi_doc);
-	test_private_apis(coincheck, japi_doc);
+	if(0) test_public_apis(coincheck, japi_doc);
+	if(0) test_private_apis(coincheck, japi_doc);
+	
+	if(1) test_withdraws_api(coincheck);
 	
 	trading_agency_free(coincheck);
 	return;
@@ -195,7 +199,7 @@ static void test_private_apis(trading_agency_t * agent, json_object * japi_doc)
 	const char * order_id = "3634782772";	// <== replaces with the real order_id 
 	
 	// 0. Check account balance.
-	if(1) {
+	if(0) {
 		//~ check_balance(curl, server, api_query_key, api_query_secret, NULL);
 		rc = coincheck_account_get_balance(agent, &jresponse);
 		assert(0 == rc);
@@ -273,5 +277,89 @@ static void test_private_apis(trading_agency_t * agent, json_object * japi_doc)
 		}
 	}
 
+	return;
+}
+
+#define json_add_string(jobj, key, value) json_object_object_add(jobj, key, json_object_new_string(value?value:""))
+static void test_withdraws_api(trading_agency_t * agent)
+{
+	int rc = 0;
+	json_object * jresponse = NULL;
+	
+	if(1) {
+		rc = coincheck_get_bank_accounts(agent, &jresponse);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_get_bank_accounts: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	
+	if(0) {
+		//~ rc = coincheck_bank_account_add(agent, bank_name, branch_name, bank_account_type, number, name, &jresponse);
+		
+		json_object * jbank_info = json_object_new_object();
+		json_add_string(jbank_info, "bank_name", "(銀行名)");
+		json_add_string(jbank_info, "branch_name", "(支店名)");
+		json_add_string(jbank_info, "bank_account_type", "futsu"); // 口座種類: futsu(普通), toza(当座預金)
+		json_add_string(jbank_info, "number", "(口座番号)");
+		json_add_string(jbank_info, "name", "(口座名義)");
+	
+		rc = coincheck_bank_account_add_json(agent, jbank_info, &jresponse);
+		
+		json_object_put(jbank_info);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_bank_account_add: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	if(0) {
+		long bank_account_id = 0;	// <== get_bank_accounts()[].bank_account_id
+		rc = coincheck_bank_account_remove(agent, bank_account_id, &jresponse);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_bank_account_remove: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	
+	if(0) {
+		rc = coincheck_get_withdraws_history(agent, NULL, &jresponse);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_get_withdraws_history: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	
+	if(0) {
+		long bank_account_id = 835161; // <== get_bank_accounts()[].id
+		rc = coincheck_withdraw_request(agent, bank_account_id, "10000", NULL, &jresponse);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_withdraw_request: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	
+	if(1) {
+		long withdraw_id = 1407768; // <== get_withdraws_history()[].id
+		rc = coincheck_withdraw_cancel(agent, withdraw_id, &jresponse);
+		assert(0 == rc);
+		if(jresponse) {
+			fprintf(stderr, "coincheck_withdraw_request: %s\n", json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_SPACED));
+			json_object_put(jresponse);
+			jresponse = NULL;
+		}
+	}
+	
+	
+	
 	return;
 }

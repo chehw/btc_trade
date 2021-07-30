@@ -676,7 +676,6 @@ int panel_ticker_append(struct panel_ticker_context * ctx, json_object * jticker
 	assert(ctx && jticker);
 	struct coincheck_ticker ticker = { 0 };
 	
-	
 	char sz_val[100] = "";
 #define set_entry(key) do { \
 		ticker.key = json_get_value(jticker, double, key); \

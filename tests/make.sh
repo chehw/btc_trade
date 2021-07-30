@@ -37,6 +37,13 @@ case "$TARGET" in
 			$(pkg-config --cflags --libs gnutls) \
 			-lm -lpthread -ljson-c -lcurl
 		;;
+		
+	test-spin-button)
+		${LINKER} -o tests/${TARGET} \
+			tests/gui/test-spin-button.c \
+			$(pkg-config --cflags --libs gtk+-3.0) \
+			-lm -lpthread -ljson-c -lcurl
+		;;
 	*)
 		echo "not found"
 		exit 1

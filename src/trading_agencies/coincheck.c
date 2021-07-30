@@ -477,7 +477,7 @@ int coincheck_get_cancellation_status(trading_agency_t * agent, const char * ord
  * HTTP REQUEST
  * GET /api/exchange/orders/transactions
 **/
-int coincheck_get_order_history(trading_agency_t * agent, struct coincheck_pagination_params * pagination, json_object ** p_jresponse)
+int coincheck_get_order_history(trading_agency_t * agent, const struct coincheck_pagination_params * pagination, json_object ** p_jresponse)
 {
 	static const char * end_point = "api/exchange/orders/transactions";
 	int rc = 0;
@@ -611,3 +611,255 @@ int coincheck_account_get_info(trading_agency_t * agent, json_object ** p_jrespo
 	if(p_jresponse) *p_jresponse = jresponse;
 	return response->err_code;
 }
+
+
+
+/****************************************
+ * coincheck private APIs
+ * coincheck::Withdraw
+****************************************/
+int coincheck_get_bank_accounts(trading_agency_t * agent, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/bank_accounts";
+	int rc = 0;
+	assert(agent);
+	
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
+	
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
+
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+}
+
+int coincheck_bank_account_add_json(trading_agency_t * agent, json_object * jbank_info, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/bank_accounts";
+	int rc = 0;
+	assert(agent);
+	assert(jbank_info);
+	
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_withdraw, &api_key, &api_secret); 
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
+	
+	const char * query_str = json_object_to_json_string_ext(jbank_info, JSON_C_TO_STRING_PLAIN);
+	int cb_query = strlen(query_str);
+	assert(query_str && cb_query > 0);
+	
+	http->headers = coincheck_auth_add_headers(http->headers, api_key, api_secret, 
+		url, query_str, cb_query,
+		NULL);
+	
+	char content_length[100] = "";
+	snprintf(content_length, sizeof(content_length), "%ld", (long)cb_query);
+	http->add_header(http, "Content-Type", "application/json;charset=utf-8", -1);
+	http->add_header(http, "Content-Length", content_length, -1);
+	jresponse = http->post(http, url, query_str, cb_query);
+	
+	if(NULL == jresponse) return response->err_code;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+}
+int coincheck_bank_account_add(trading_agency_t * agent, 
+	const char * bank_name, 
+	const char * branch_name, 
+	const char * bank_account_type, 
+	const char * number, 
+	const char * name,
+	json_object ** p_jresponse)
+{
+	assert(bank_name && branch_name && bank_account_type && number && name);
+	json_object * jbank_info = json_object_new_object();
+	assert(jbank_info);
+	json_object_object_add(jbank_info, "bank_name", json_object_new_string(bank_name));
+	json_object_object_add(jbank_info, "branch_name", json_object_new_string(branch_name));
+	json_object_object_add(jbank_info, "bank_account_type", json_object_new_string(bank_account_type));
+	json_object_object_add(jbank_info, "number", json_object_new_string(number));
+	json_object_object_add(jbank_info, "name", json_object_new_string(name));
+	
+	int rc = coincheck_bank_account_add_json(agent, jbank_info, p_jresponse);
+	json_object_put(jbank_info);
+	return rc;
+}
+
+int coincheck_bank_account_remove(trading_agency_t * agent, long bank_account_id, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/bank_accounts";
+	int rc = 0;
+	assert(agent);
+
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_withdraw, &api_key, &api_secret); 
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	snprintf(url, sizeof(url), "%s/%s/%ld", agent->base_url, end_point, (long)bank_account_id);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
+
+	jresponse = http->delete(http, url, NULL, 0);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+	
+}
+int coincheck_get_withdraws_history(trading_agency_t * agent, const struct coincheck_pagination_params * pagination, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/withdraws";
+	int rc = 0;
+	assert(agent);
+	
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_query, &api_key, &api_secret); // use query_key (the principle of least privilege )
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	char * p = url;
+	char * p_end = p + sizeof(url);
+	int cb = 0;
+	cb = snprintf(p, p_end - p, "%s/%s", agent->base_url, end_point); 
+	assert(cb > 0);
+	p += cb;
+	
+	if(pagination) { /* todo: add tests */
+		cb = snprintf(p, p_end - p, "?limit=%ld&order=%s", 
+			(long)pagination->limit, 
+			s_sz_pagination_order[pagination->order]);
+		assert(cb > 0);
+		p += cb;
+		if(pagination->starting_after) {
+			cb = snprintf(p, p_end - p, "&starting_after=%s", pagination->starting_after);
+			assert(cb > 0);
+			p += cb;
+		}
+		if(pagination->ending_before) {
+			cb = snprintf(p, p_end - p, "&ending_before=%s", pagination->ending_before);
+			assert(cb > 0);
+			p += cb;
+		}
+	}
+	
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
+
+	jresponse = http->get(http, url);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+}
+int coincheck_withdraw_request(trading_agency_t * agent, long bank_account_id, const char * amount, const char * currency, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/withdraws";
+	int rc = 0;
+	assert(agent);
+	assert(bank_account_id > 0);
+	assert(amount);
+	if(NULL == currency) currency = "JPY";
+	
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_withdraw, &api_key, &api_secret); 
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	snprintf(url, sizeof(url), "%s/%s", agent->base_url, end_point);
+	
+	json_object * jquery = json_object_new_object();
+	assert(jquery);
+	json_object_object_add(jquery, "bank_account_id", json_object_new_int64(bank_account_id));
+	json_object_object_add(jquery, "amount", json_object_new_string(amount));
+	json_object_object_add(jquery, "currency", json_object_new_string(currency));
+	
+	const char * query_str = json_object_to_json_string_ext(jquery, JSON_C_TO_STRING_PLAIN);
+	int cb_query = strlen(query_str);
+	assert(query_str && cb_query > 0);
+	
+	http->headers = coincheck_auth_add_headers(http->headers, api_key, api_secret, 
+		url, query_str, cb_query,
+		NULL);
+	
+	char content_length[100] = "";
+	snprintf(content_length, sizeof(content_length), "%ld", (long)cb_query);
+	http->add_header(http, "Content-Type", "application/json;charset=utf-8", -1);
+	http->add_header(http, "Content-Length", content_length, -1);
+	jresponse = http->post(http, url, query_str, cb_query);
+	
+	json_object_put(jquery);
+	if(NULL == jresponse) return response->err_code;
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+}
+int coincheck_withdraw_cancel(trading_agency_t * agent, long widthdraw_id, json_object ** p_jresponse)
+{
+	static const char * end_point = "api/withdraws";
+	int rc = 0;
+	assert(agent);
+
+	const char * api_key = NULL;
+	const char * api_secret = NULL;
+	rc = agent->get_credentials(agent, trading_agency_credentials_type_withdraw, &api_key, &api_secret); 
+	assert(0 == rc && api_key && api_secret);
+	
+	json_object * jresponse = NULL;
+	struct http_json_context * http = agent->http;
+	struct json_response_context * response = http->response;
+	
+	char url[4096] = "";
+	snprintf(url, sizeof(url), "%s/%s/%ld", agent->base_url, end_point, (long)widthdraw_id);
+	http->headers = coincheck_auth_add_headers(http->headers, 
+		api_key, api_secret, 
+		url, NULL, 0, 
+		NULL);
+
+	jresponse = http->delete(http, url, NULL, 0);
+	if(NULL == jresponse) return response->err_code;
+	
+	if(p_jresponse) *p_jresponse = jresponse;
+	return response->err_code;
+}
+
