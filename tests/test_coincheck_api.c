@@ -338,7 +338,7 @@ static void test_withdraws_api(trading_agency_t * agent)
 	}
 	
 	if(0) {
-		long bank_account_id = 835161; // <== get_bank_accounts()[].id
+		long bank_account_id = -1; // <== get_bank_accounts()[].id
 		rc = coincheck_withdraw_request(agent, bank_account_id, "10000", NULL, &jresponse);
 		assert(0 == rc);
 		if(jresponse) {
@@ -349,7 +349,7 @@ static void test_withdraws_api(trading_agency_t * agent)
 	}
 	
 	if(1) {
-		long withdraw_id = 1407768; // <== get_withdraws_history()[].id
+		long withdraw_id = -1; // <== get_withdraws_history()[].id
 		rc = coincheck_withdraw_cancel(agent, withdraw_id, &jresponse);
 		assert(0 == rc);
 		if(jresponse) {
