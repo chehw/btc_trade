@@ -48,6 +48,13 @@ int cli_get_order_history(struct cli_context * ctx);
 int cli_get_balance(struct cli_context * ctx);
 int cli_get_account(struct cli_context * ctx);
 
+int cli_get_bank_accounts(struct cli_context * ctx);
+int cli_bank_account_add(struct cli_context * ctx);
+int cli_bank_account_remove(struct cli_context * ctx);
+int cli_get_withdraws_history(struct cli_context * ctx);
+int cli_withdraw_request(struct cli_context * ctx);
+int cli_withdraw_cancel(struct cli_context * ctx);
+
 typedef int (* cli_function_ptr)(struct cli_context * cli);
 typedef struct cli_mapping_record
 {
@@ -67,6 +74,13 @@ static cli_mapping_record_t s_cli_mappings[] = {
 	FUNCTION_DEF(order_history, cli_get_order_history),
 	FUNCTION_DEF(balance, cli_get_balance),
 	FUNCTION_DEF(account, cli_get_account),
+	// withdraws api
+	FUNCTION_DEF(bank_accounts, cli_get_bank_accounts),
+	FUNCTION_DEF(bank_account_add, cli_bank_account_add),
+	FUNCTION_DEF(bank_account_remove, cli_bank_account_remove),
+	FUNCTION_DEF(withdraws, cli_get_withdraws_history),
+	FUNCTION_DEF(withdraw_request, cli_withdraw_request),
+	FUNCTION_DEF(withdraw_cancel, cli_withdraw_cancel),
 	{ "", }
 };
 
@@ -129,6 +143,14 @@ static void print_usuage(const char * exe_name)
 	fprintf(stderr, "%s command [params_list]\n", exe_name);
 	
 	fprintf(stderr, "Command List: \n");
+	for(int i = 0; ; ++i)
+	{
+		if(!s_cli_mappings[i].command || !s_cli_mappings[i].command[0]) break;
+		fprintf(stderr, "\t%s", s_cli_mappings[i].command);
+		if((i % 4) == 3) printf("\n"); 
+	}
+	printf("\nDescriptions: \n"); 
+	
 	fprintf(stderr, 
 		"  - ticker: (no params)\n"
 		"    - description: \n"
@@ -206,6 +228,60 @@ static void print_usuage(const char * exe_name)
 		"    - description: Get account info.\n"
 		"      examples: \n"
 		"        %s account\n"
+		"\n",
+		exe_name);
+		
+	// withdraws
+	fprintf(stderr, 
+		"  - bank_accounts: (no params)\n"
+		"    - description: Get bank account info.\n"
+		"      examples: \n"
+		"        %s bank_accounts\n"
+		"\n",
+		exe_name);
+		
+	fprintf(stderr, 
+		"  - bank_account_add: \n"
+		"    - params_list: [ bank_name, branch_name, bank_account_type, number, name ]\n" 
+		"    - description: add bank account.\n"
+		"      examples: \n"
+		"        %s bank_account_add\n"
+		"        %s bank_account_add bank_name=\"<bank>\"\n"
+		"\n",
+		exe_name, exe_name);
+		
+	fprintf(stderr, 
+		"  - bank_account_remove: bank_account_id\n"
+		"    - params_list: [ bank_account_id ]\n" 
+		"    - description: remove bank account.\n"
+		"      examples: \n"
+		"        %s bank_account_remove <bank_account_id> \n"
+		"\n",
+		exe_name);
+	
+	fprintf(stderr, 
+		"  - withdraws: (no params)\n"
+		"    - description: Get withdraws history.\n"
+		"      examples: \n"
+		"        %s withdraws\n"
+		"\n",
+		exe_name);
+	
+	fprintf(stderr, 
+		"  - withdraw_request: \n"
+		"    - description: Get withdraws history.\n"
+		"    - params_list: [ bank_account_id, amount ]\n" 
+		"      examples: \n"
+		"        %s withdraw_request <bank_account_id> \"10000.0\" \n"
+		"\n",
+		exe_name);
+		
+	fprintf(stderr, 
+		"  - withdraw_cancel: \n"
+		"    - params_list: [ withdraw_id ]\n" 
+		"    - description: cancel withdraws.\n"
+		"      examples: \n"
+		"        %s withdraw_cancel <withdraw_id>\n"
 		"\n",
 		exe_name);
 	return;
@@ -482,4 +558,227 @@ void cli_context_free(cli_context_t * ctx)
 	}
 	
 	free(ctx);
+}
+
+
+
+
+/****************************************
+ * coincheck private APIs
+ * coincheck::Withdraw
+****************************************/
+int cli_get_bank_accounts(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_get_bank_accounts(ctx->agent, &jresponse);
+	return output_json_response(rc, jresponse);
+}
+
+
+#define BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH (100)
+struct bank_account_info
+{
+	char bank_name[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH];
+	char branch_name[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH];
+	char bank_account_type[32];
+	char number[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH];
+	char name[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH];
+};
+int bank_account_info_parse_args(struct bank_account_info * info, int num_args, char ** args)
+{
+#define check_key_and_set(keyname) do { \
+		if(strcasecmp(key, #keyname) == 0) strncpy(info->keyname, value, sizeof(info->keyname)); \
+	} while(0)
+	
+
+	for(int i = 0; i < num_args; ++i) {
+		char line[1024] = "";
+		int cb = snprintf(line, sizeof(line), "%s", args[i]);
+		assert(cb > 0);
+		
+		char * token = NULL;
+		char * key = strtok_r(line, "=", &token);
+		char * value = strtok_r(NULL, "\n", &token);
+		if(NULL == key || NULL == value) return -1;
+	
+		check_key_and_set(bank_name);
+		check_key_and_set(branch_name);
+		check_key_and_set(bank_account_type);
+		check_key_and_set(number);
+		check_key_and_set(name);
+	}
+#undef check_key_and_set
+
+	return 0;
+}
+
+static int ask_value(const char * keyname, const char * hints, char * value, size_t size)
+{
+	assert(keyname && value && size > 0);
+	if(hints) {
+		printf("%s: (%s): ", keyname, hints);
+	}else {
+		printf("%s: ", keyname);
+	}
+	fflush(stdout);
+	
+	char * line = fgets(value, size, stdin);
+	int cb = strlen(line);
+	if(cb <= 0) return -1;
+	
+	while(cb > 0 && (line[cb - 1] == '\n' || line[cb - 1] == '\r')) line[--cb] = '\0';
+	if(cb <= 0) {
+		fprintf(stderr, "\e[31m" "[%s] should not be empty." "\e[39m" "\n", keyname);
+		exit(1);
+		return -1;
+	}
+	
+	return 0;
+}
+
+static void bank_account_info_dump(const struct bank_account_info * info) 
+{
+	printf("===== bank info =====\n");
+	printf("bank_name: %s\n", info->bank_name);
+	printf("branch_name: %s\n", info->branch_name);
+	printf("bank_account_type: %s\n", info->bank_account_type);
+	printf("number: %s\n", info->number);
+	printf("name: %s\n", info->name);
+}
+
+int cli_bank_account_add(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	
+	struct bank_account_info info[1];
+	memset(info, 0, sizeof(info));
+	
+	json_object * jresponse = NULL;
+	rc = bank_account_info_parse_args(info, ctx->num_params, ctx->params_list);
+	assert(0 == rc);
+	
+	if(!info->bank_name[0]) rc = ask_value("bank_name", NULL, info->bank_name, sizeof(info->bank_name));
+	assert(0 == rc);
+	if(!info->branch_name[0]) rc = ask_value("branch_name", NULL, info->branch_name, sizeof(info->branch_name));
+	assert(0 == rc);
+	if(!info->bank_account_type[0]) rc = ask_value("bank_account_type", "futsu | toza", info->bank_account_type, sizeof(info->bank_account_type));
+	assert(0 == rc);
+	if(!info->number[0]) rc = ask_value("number", NULL, info->number, sizeof(info->number));
+	assert(0 == rc);
+	if(!info->name[0]) rc = ask_value("name", "フリガナ", info->name, sizeof(info->name));
+	assert(0 == rc);
+	
+	if(1) bank_account_info_dump(info);
+	
+	return 0;
+	
+	rc = coincheck_bank_account_add(ctx->agent, 
+		info->bank_name,
+		info->branch_name, 
+		info->bank_account_type,
+		info->number,
+		info->name,
+		&jresponse);
+	return output_json_response(rc, jresponse);
+}
+int cli_bank_account_remove(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	char bank_account_id[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH] = "";
+	long id = 0;
+	
+	if(ctx->num_params < 1) {
+		rc = ask_value("bank_account_id", NULL, bank_account_id, sizeof(bank_account_id));
+		if(rc) {
+			fprintf(stderr, "\e[31m" "bank_account_id should not be empty." "\e[39m" "\n");
+		}
+		else id = atol(bank_account_id);
+	} else id = atol(ctx->params_list[0]);
+	
+	if(id <= 0) {
+		fprintf(stderr, "\e[31m" "invalid bank_account_id (%ld)." "\e[39m" "\n", id);
+	}
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_bank_account_remove(ctx->agent, id, &jresponse);
+	return output_json_response(rc, jresponse);
+}
+int cli_get_withdraws_history(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	
+	json_object * jresponse = NULL;
+	struct coincheck_pagination_params pagination = { 
+		.limit = 50,
+	};
+	
+	for(int i =0; i < ctx->num_params; ++i) {
+		const char * pattern = NULL;
+		const char * p_find = NULL;
+		pattern = "limit=";
+		p_find = strstr(ctx->params_list[i], pattern);
+		if(p_find) {
+			pagination.limit = atoi(p_find + strlen(pattern));
+			continue;
+		}
+	}
+	
+	rc = coincheck_get_withdraws_history(ctx->agent, &pagination, &jresponse);
+	return output_json_response(rc, jresponse);
+}
+
+int cli_withdraw_request(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	char bank_account_id[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH] = "";
+	char amount[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH] = "";
+	long id = 0;
+	
+	if(ctx->num_params >= 2) {
+		strncpy(bank_account_id, ctx->params_list[0], sizeof(bank_account_id));
+		strncpy(amount, ctx->params_list[1], sizeof(amount));
+	}
+	if(!bank_account_id[0]) ask_value("bank_account_id", NULL, bank_account_id, sizeof(bank_account_id));
+	if(!amount[0]) ask_value("amount", NULL,  amount, sizeof(amount));
+	
+	id = atol(bank_account_id);
+	printf("======\n");
+	printf("bank_account_id: %ld, amount=%s\n", id, amount);
+	
+	if(id <= 0) {
+		fprintf(stderr, "\e[31m" "invalid bank_account_id (%ld)." "\e[39m" "\n", id);
+	}
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_withdraw_request(ctx->agent, id, amount, "JPY", &jresponse);
+	return output_json_response(rc, jresponse);
+}
+int cli_withdraw_cancel(struct cli_context * ctx)
+{
+	assert(ctx && ctx->agent);
+	int rc = 0;
+	char withdraw_id[BANK_ACCOUNT_INFO_MAX_FIELD_LENGTH] = "";
+	long id = 0;
+	
+	if(ctx->num_params >= 1) {
+		strncpy(withdraw_id, ctx->params_list[0], sizeof(withdraw_id));
+	}
+	if(!withdraw_id[0]) ask_value("withdraw_id", NULL, withdraw_id, sizeof(withdraw_id));
+	if(id <= 0) {
+		fprintf(stderr, "\e[31m" "invalid bank_account_id (%ld)." "\e[39m" "\n", id);
+	}
+	id = atol(withdraw_id);
+	printf("======\n");
+	printf("cancel withdraw: withdraw_id=%ld\n", id);
+	
+	json_object * jresponse = NULL;
+	rc = coincheck_withdraw_cancel(ctx->agent, id, &jresponse);
+	return output_json_response(rc, jresponse);
 }
